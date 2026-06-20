@@ -64,6 +64,26 @@ node dist/cli.js --format json --files src,packages --exclude '**/generated/**'
 `@vue/compiler-sfc`, `svelte` и `@angular/compiler`. Если пакет не установлен,
 соответствующие файлы будут пропущены с предупреждением.
 
+## PMD CPD compatibility scope
+
+`clone-alert` целится в PMD CPD-like поиск дублей для JavaScript/TypeScript
+экосистемы: `.js`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.jsx`, а также frontend
+шаблоны, которые типичны для TS-проектов.
+
+Проверяемая совместимость сейчас покрывает:
+
+- PMD JavaScript/TypeScript CPD tokenizer fixtures, vendored в `test/fixtures/pmd/**`.
+- Итоговый duplicate search по токенам, включая `--ignore-identifiers`,
+  `--ignore-literals` и suppress markers `CPD-OFF` / `CPD-ON`.
+- JSX/TSX tokenization и duplicate detection для React-like компонентов.
+- Реальные npm layouts: `src/**/*.ts`, `src/**/*.tsx`, monorepo `packages/**`
+  и исключение generated файлов через `--exclude`.
+- Отчёты `text`, `json`, `xml`: порядок occurrence, token counts, line ranges и paths.
+
+PMD fixtures лежат внутри репозитория, поэтому тесты не требуют локального PMD
+checkout или git submodule. Vendored golden data исключены из Biome и TypeScript
+project checking, чтобы upstream fixture content не переформатировался.
+
 ## Проверка
 
 ```sh
