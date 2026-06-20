@@ -31,6 +31,22 @@ function copied() {
     await writeFile(path.join(directory, 'dup1.ts'), duplicate);
 }
 
+async function writeDeterministicDuplicatePair(directory: string): Promise<{ firstFile: string; secondFile: string }> {
+    const duplicateBody = `export function repeated(value: number) {
+  const next = value + 1;
+  const label = String(next);
+  return label.toUpperCase();
+}
+`;
+    const firstFile = path.join(directory, 'first "quoted".ts');
+    const secondFile = path.join(directory, 'second.ts');
+
+    await writeFile(firstFile, duplicateBody);
+    await writeFile(secondFile, duplicateBody);
+
+    return { firstFile, secondFile };
+}
+
 describe('PMD CPD CLI duplicate-search compatibility', () => {
     test('directory scan reports duplicate files alphabetically regardless of creation order', async () => {
         const directory = await fixtureDir('clone-alert-pmd-order');
@@ -101,10 +117,87 @@ describe('PMD CPD CLI duplicate-search compatibility', () => {
 
         expect(stdout).toContain('<?xml version="1.0" encoding="UTF-8"?>');
         expect(stdout).toContain('<pmd-cpd>');
-        expect(stdout).toContain('<duplication tokens="');
+        expect(stdout).toContain('<duplication ');
+        expect(stdout).toContain('tokens="');
         expect(stdout).toContain('&amp;');
         expect(stdout).toContain('line="');
         expect(stdout).toContain('column="');
+    });
+
+    test('json report preserves duplicate ordering, line ranges, and token counts', async () => {
+        const directory = await fixtureDir('clone-alert-pmd-report-json');
+        const { firstFile, secondFile } = await writeDeterministicDuplicatePair(directory);
+
+        const { stdout } = await execFileAsync(process.execPath, [
+            cli,
+            '--minimum-tokens',
+            '10',
+            '--format',
+            'json',
+            '--files',
+            directory,
+        ]);
+        const report = JSON.parse(stdout) as {
+            duplicates: Array<{
+                lines: number;
+                tokens: number;
+                files: Array<{ path: string; startLine: number; endLine: number }>;
+            }>;
+        };
+
+        expect(report.duplicates[0]).toEqual(
+            expect.objectContaining({
+                lines: 5,
+                tokens: expect.any(Number),
+                files: [
+                    expect.objectContaining({ path: firstFile, startLine: 1, endLine: 5 }),
+                    expect.objectContaining({ path: secondFile, startLine: 1, endLine: 5 }),
+                ],
+            })
+        );
+        expect(report.duplicates[0].tokens).toBeGreaterThanOrEqual(10);
+    });
+
+    test('xml report escapes paths and exposes duplicate attributes', async () => {
+        const directory = await fixtureDir('clone-alert-pmd-report-xml');
+        await writeDeterministicDuplicatePair(directory);
+
+        const { stdout } = await execFileAsync(process.execPath, [
+            cli,
+            '--minimum-tokens',
+            '10',
+            '--format',
+            'xml',
+            '--files',
+            directory,
+        ]);
+
+        expect(stdout).toContain('<duplication ');
+        expect(stdout).toContain('lines="5"');
+        expect(stdout).toContain('tokens="');
+        expect(stdout).toContain('<file ');
+        expect(stdout).toContain('line="1"');
+        expect(stdout).toContain('&quot;');
+    });
+
+    test('text report preserves first occurrence order', async () => {
+        const directory = await fixtureDir('clone-alert-pmd-report-text');
+        const { firstFile, secondFile } = await writeDeterministicDuplicatePair(directory);
+
+        const { stdout } = await execFileAsync(process.execPath, [
+            cli,
+            '--minimum-tokens',
+            '10',
+            '--format',
+            'text',
+            '--files',
+            directory,
+        ]);
+
+        const firstIndex = stdout.indexOf(firstFile);
+        const secondIndex = stdout.indexOf(secondFile);
+        expect(firstIndex).toBeGreaterThanOrEqual(0);
+        expect(secondIndex).toBeGreaterThan(firstIndex);
     });
 
     test('missing input path fails with usage exit code', async () => {

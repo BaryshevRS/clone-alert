@@ -277,7 +277,7 @@ function formatReport(format: ReportFormat, cpd: Cpd, matches: Match[]): string 
         return `${JSON.stringify({ duplicates: matches.map((match) => matchToJson(match, cpd)) }, null, 2)}\n`;
     }
     if (format === 'xml') {
-        return formatXml(matches);
+        return formatXml(matches, cpd);
     }
     return cpd.report(matches);
 }
@@ -291,10 +291,13 @@ function matchToJson(match: Match, cpd: Cpd) {
     };
 }
 
-function formatXml(matches: Match[]): string {
+function formatXml(matches: Match[], cpd: Cpd): string {
     const lines = ['<?xml version="1.0" encoding="UTF-8"?>', '<pmd-cpd>'];
     for (const match of matches) {
-        lines.push(`  <duplication tokens="${match.tokenCount}" occurrences="${match.markCount}">`);
+        const duplicate = matchToJson(match, cpd);
+        lines.push(
+            `  <duplication lines="${duplicate.lines}" tokens="${match.tokenCount}" occurrences="${match.markCount}">`
+        );
         for (const mark of match.marks) {
             const token = mark.token;
             lines.push(
