@@ -1,17 +1,49 @@
 {
   "name": "clone-alert",
-  "version": "0.1.0",
-  "description": "Minimal PMD CPD-like copy-paste detector for TypeScript, JavaScript and templates.",
+  "version": "0.2.0",
+  "description": "PMD CPD-like copy-paste detector for TypeScript, JavaScript and frontend templates.",
   "license": "MIT",
   "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "bin": {
     "clone-alert": "dist/cli.js"
   },
   "files": [
-    "dist",
+    "dist/**/*",
     "README.md",
     "LICENSE"
   ],
+  "keywords": [
+    "cpd",
+    "copy-paste",
+    "duplicate-code",
+    "pmd",
+    "static-analysis",
+    "typescript",
+    "javascript",
+    "tsx",
+    "cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/BaryshevRS/clone-alert.git"
+  },
+  "bugs": {
+    "url": "https://github.com/BaryshevRS/clone-alert/issues"
+  },
+  "homepage": "https://github.com/BaryshevRS/clone-alert#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "biome check .",
@@ -20,6 +52,10 @@
     "lint": "npm run check:fix && npm run lint:knip && npm run check-types && npm run lint:cpd",
     "lint:cpd": "npm run build && node dist/cli.js --minimum-tokens 70 --files src --extensions ts --format text --fail-on-violation",
     "lint:knip": "knip",
+    "pack:dry-run": "npm pack --dry-run",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run check && npm run lint:knip && npm run check-types && npm run lint:cpd && npm test",
+    "publish:dry-run": "npm publish --dry-run",
     "test": "npm run build && vitest run"
   },
   "dependencies": {
