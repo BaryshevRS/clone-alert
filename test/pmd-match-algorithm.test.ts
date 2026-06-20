@@ -251,6 +251,17 @@ describe('PMD MatchAlgorithm equivalents and edge cases', () => {
         expect(strict).toHaveLength(0);
     });
 
+    test('uses PMD-like strict identifier comparison by default', () => {
+        const left = 'function alpha(value: number) { return value + 1; }';
+        const right = 'function beta(input: number) { return input + 1; }';
+
+        const matches = detectClonesFromSources([left, right], {
+            minTileSize: 8,
+        });
+
+        expect(matches).toHaveLength(0);
+    });
+
     test('matches changed literals only when ignoreLiterals is enabled', () => {
         const left = 'const config = { retries: 2, url: "https://one.example" };';
         const right = 'const config = { retries: 5, url: "https://two.example" };';
@@ -268,6 +279,17 @@ describe('PMD MatchAlgorithm equivalents and edge cases', () => {
 
         expect(normalized).toHaveLength(1);
         expect(strict).toHaveLength(0);
+    });
+
+    test('uses PMD-like strict literal comparison by default', () => {
+        const left = 'const config = { retries: 2, url: "https://one.example" };';
+        const right = 'const config = { retries: 5, url: "https://two.example" };';
+
+        const matches = detectClonesFromSources([left, right], {
+            minTileSize: 10,
+        });
+
+        expect(matches).toHaveLength(0);
     });
 
     test('does not report duplicates inside CPD-OFF and CPD-ON regions', () => {

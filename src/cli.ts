@@ -41,11 +41,12 @@ Options:
   --format <text|xml|json>        Report format. Default: text.
   --extensions <ext[,ext...]>     Extensions to include. Default: ts,tsx,js,jsx,vue,svelte,html.
   --exclude <glob[,glob...]>      Exclude files or directories. Can be repeated.
-  --ignore-identifiers            Normalize identifiers. Default.
-  --no-ignore-identifiers         Compare exact identifiers.
-  --ignore-literals               Normalize literals. Default.
-  --no-ignore-literals            Compare exact literals.
-  --skip-angular-inline-templates Do not scan inline Angular component templates.
+  --ignore-identifiers            Normalize identifiers.
+  --no-ignore-identifiers         Compare exact identifiers. Default.
+  --ignore-literals               Normalize literals.
+  --no-ignore-literals            Compare exact literals. Default.
+  --angular-inline-templates      Also scan Angular @Component inline templates.
+  --skip-angular-inline-templates Do not scan inline Angular templates. Default.
   --fail-on-violation             Exit with code 4 when duplications are found.
   -h, --help                      Show this help.
   -V, --version                   Show version.
@@ -98,9 +99,9 @@ function parseArgs(argv: string[]): CliOptions {
     const extensions = new Set(DEFAULT_EXTENSIONS);
     const excludePatterns: string[] = [];
     let minTileSize = 50;
-    let ignoreIdentifiers = true;
-    let ignoreLiterals = true;
-    let angularInlineTemplates = true;
+    let ignoreIdentifiers = false;
+    let ignoreLiterals = false;
+    let angularInlineTemplates = false;
     let format: ReportFormat = 'text';
     let failOnViolation = false;
 
@@ -173,6 +174,10 @@ function parseArgs(argv: string[]): CliOptions {
         }
         if (arg === '--no-ignore-literals') {
             ignoreLiterals = false;
+            continue;
+        }
+        if (arg === '--angular-inline-templates') {
+            angularInlineTemplates = true;
             continue;
         }
         if (arg === '--skip-angular-inline-templates') {

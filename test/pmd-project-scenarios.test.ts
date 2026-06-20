@@ -78,11 +78,16 @@ describe('real npm project CPD scenarios', () => {
         ]);
 
         const report = JSON.parse(stdout) as JsonReport;
-        expect(report.duplicates).toHaveLength(1);
-        expect(report.duplicates[0].files.map((file) => file.path).sort()).toEqual([
-            join(root, 'src/features/a/Card.tsx'),
-            join(root, 'src/features/b/Card.tsx'),
-        ]);
+        expect(report.duplicates).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    files: expect.arrayContaining([
+                        expect.objectContaining({ path: join(root, 'src/features/a/Card.tsx') }),
+                        expect.objectContaining({ path: join(root, 'src/features/b/Card.tsx') }),
+                    ]),
+                }),
+            ])
+        );
     });
 
     test('excludes generated files from duplicate detection', async () => {

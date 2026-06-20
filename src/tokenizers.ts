@@ -12,8 +12,8 @@ export interface TokenizeOptions {
 }
 
 const DEFAULTS: Required<TokenizeOptions> = {
-    ignoreIdentifiers: true,
-    ignoreLiterals: true,
+    ignoreIdentifiers: false,
+    ignoreLiterals: false,
 };
 
 function optional<T = any>(name: string): T | null {

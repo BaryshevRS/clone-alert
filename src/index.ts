@@ -16,7 +16,7 @@ export { Mark, Match, TokenEntry } from './core';
 
 export interface CpdOptions extends TokenizeOptions {
     minTileSize?: number;
-    /** Извлекать inline-шаблоны из @Component для .ts (по умолчанию true). */
+    /** Извлекать inline-шаблоны из @Component для .ts (по умолчанию false). */
     angularInlineTemplates?: boolean;
 }
 
@@ -39,9 +39,9 @@ export class Cpd {
     constructor(opts: CpdOptions = {}) {
         this.opts = {
             minTileSize: opts.minTileSize ?? 50,
-            ignoreIdentifiers: opts.ignoreIdentifiers ?? true,
-            ignoreLiterals: opts.ignoreLiterals ?? true,
-            angularInlineTemplates: opts.angularInlineTemplates ?? true,
+            ignoreIdentifiers: opts.ignoreIdentifiers ?? false,
+            ignoreLiterals: opts.ignoreLiterals ?? false,
+            angularInlineTemplates: opts.angularInlineTemplates ?? false,
         };
         this.core = new CpdCore(this.opts.minTileSize);
     }
