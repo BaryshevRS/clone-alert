@@ -2,11 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { scriptKindFor, tokenizeTypeScript } from '../src/tokenizers';
-import {
-    discoverPmdFixtureCases,
-    type PmdFixtureCase,
-    readPmdExpectedTokens,
-} from './helpers/pmd-fixtures';
+import { discoverPmdFixtureCases, type PmdFixtureCase, readPmdExpectedTokens } from './helpers/pmd-fixtures';
 
 interface ActualToken {
     image: string;

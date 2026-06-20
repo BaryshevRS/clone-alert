@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { CpdCore, Mark, Match, type RawToken, TokenEntry } from '../src/core';
+import { Cpd, type CpdOptions } from '../src/index';
 
 function token(image: string, line: number, column = 1): RawToken {
     return { image, line, column };
@@ -13,6 +14,14 @@ function analyze(raw: RawToken[], minTileSize: number, file = 'sample.dummy') {
     const core = new CpdCore(minTileSize);
     core.addFile(file, raw);
     return core.analyze();
+}
+
+function detectClonesFromSources(sources: string[], options: CpdOptions) {
+    const cpd = new Cpd(options);
+    for (const [index, source] of sources.entries()) {
+        cpd.addSource(`source-${index}.ts`, source);
+    }
+    return cpd.run();
 }
 
 function repeatedWindow(line: number, size: number): RawToken[] {
@@ -181,5 +190,61 @@ describe('PMD MatchAlgorithm equivalents and edge cases', () => {
         );
 
         expect(matches.map((match) => match.tokenCount)).toEqual([5, 3]);
+    });
+
+    test('matches renamed code only when ignoreIdentifiers is enabled', () => {
+        const left = 'function alpha(value: number) { return value + 1; }';
+        const right = 'function beta(input: number) { return input + 1; }';
+
+        const normalized = detectClonesFromSources([left, right], {
+            minTileSize: 8,
+            ignoreIdentifiers: true,
+            ignoreLiterals: false,
+        });
+        const strict = detectClonesFromSources([left, right], {
+            minTileSize: 8,
+            ignoreIdentifiers: false,
+            ignoreLiterals: false,
+        });
+
+        expect(normalized).toHaveLength(1);
+        expect(strict).toHaveLength(0);
+    });
+
+    test('matches changed literals only when ignoreLiterals is enabled', () => {
+        const left = 'const config = { retries: 2, url: "https://one.example" };';
+        const right = 'const config = { retries: 5, url: "https://two.example" };';
+
+        const normalized = detectClonesFromSources([left, right], {
+            minTileSize: 10,
+            ignoreIdentifiers: false,
+            ignoreLiterals: true,
+        });
+        const strict = detectClonesFromSources([left, right], {
+            minTileSize: 10,
+            ignoreIdentifiers: false,
+            ignoreLiterals: false,
+        });
+
+        expect(normalized).toHaveLength(1);
+        expect(strict).toHaveLength(0);
+    });
+
+    test('does not report duplicates inside CPD-OFF and CPD-ON regions', () => {
+        const source = `
+            // CPD-OFF
+            export function repeatedOne() { return 1 + 2 + 3 + 4; }
+            export function repeatedTwo() { return 1 + 2 + 3 + 4; }
+            // CPD-ON
+            export function unique() { return 9; }
+        `;
+
+        const matches = detectClonesFromSources([source], {
+            minTileSize: 8,
+            ignoreIdentifiers: true,
+            ignoreLiterals: true,
+        });
+
+        expect(matches).toHaveLength(0);
     });
 });

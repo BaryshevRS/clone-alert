@@ -102,12 +102,10 @@ export function readPmdExpectedTokens(expectedPath: string): PmdExpectedToken[] 
 }
 
 function walk(directory: string): string[] {
-    return fs
-        .readdirSync(directory, { withFileTypes: true })
-        .flatMap((entry) => {
-            const entryPath = path.join(directory, entry.name);
-            return entry.isDirectory() ? walk(entryPath) : [entryPath];
-        });
+    return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+        const entryPath = path.join(directory, entry.name);
+        return entry.isDirectory() ? walk(entryPath) : [entryPath];
+    });
 }
 
 function unescapePmdImage(image: string): string {
