@@ -109,8 +109,8 @@ export class Cpd {
             path: start.file,
             startLine: start.beginLine,
             startColumn: start.beginColumn,
-            endLine: end.beginLine,
-            endColumn: end.beginColumn,
+            endLine: end.endLine,
+            endColumn: end.endColumn,
         };
     }
 

@@ -299,9 +299,9 @@ function formatXml(matches: Match[], cpd: Cpd): string {
             `  <duplication lines="${duplicate.lines}" tokens="${match.tokenCount}" occurrences="${match.markCount}">`
         );
         for (const mark of match.marks) {
-            const token = mark.token;
+            const location = cpd.locationForMark(mark, match.tokenCount);
             lines.push(
-                `    <file path="${escapeXml(token.file)}" line="${token.beginLine}" column="${token.beginColumn}" />`
+                `    <file path="${escapeXml(location.path)}" line="${location.startLine}" endline="${location.endLine}" column="${location.startColumn}" endcolumn="${location.endColumn}" />`
             );
         }
         lines.push('  </duplication>');

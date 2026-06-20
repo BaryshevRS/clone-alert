@@ -79,6 +79,8 @@ node dist/cli.js --format json --files src,packages --exclude '**/generated/**'
 - Реальные npm layouts: `src/**/*.ts`, `src/**/*.tsx`, monorepo `packages/**`
   и исключение generated файлов через `--exclude`.
 - Отчёты `text`, `json`, `xml`: порядок occurrence, token counts, line ranges и paths.
+- PMD `pmd-core/src/test/java/net/sourceforge/pmd/cpd` coverage matrix:
+  core/model tests ported, renderer/config/file-analysis gaps marked explicitly.
 
 PMD fixtures лежат внутри репозитория, поэтому тесты не требуют локального PMD
 checkout или git submodule. Vendored golden data исключены из Biome и TypeScript

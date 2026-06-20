@@ -33,10 +33,13 @@ let warnedNg = false;
 // абсолютную позицию начала блока. Сдвиг по столбцу только для первой строки блока.
 function remap(tok: RawToken, baseLine: number, baseCol: number): RawToken {
     const firstLine = tok.line === 1;
+    const endFirstLine = (tok.endLine ?? tok.line) === 1;
     return {
         image: tok.image,
         line: baseLine + tok.line - 1,
         column: firstLine ? baseCol + tok.column - 1 : tok.column,
+        endLine: baseLine + (tok.endLine ?? tok.line) - 1,
+        endColumn: endFirstLine ? baseCol + (tok.endColumn ?? tok.column) - 1 : (tok.endColumn ?? tok.column),
         barrier: tok.barrier,
     };
 }
@@ -97,10 +100,13 @@ export function tokenizeTypeScript(
             const templateEnd = findTemplateLiteralEnd(source, tokenStart);
             scanner.setTextPos(templateEnd);
             const { line, character } = sf.getLineAndCharacterOfPosition(tokenStart);
+            const end = positionAtTokenEnd(sf, templateEnd);
             out.push({
                 image: o.ignoreLiterals ? TS_LIT : source.slice(tokenStart, templateEnd),
                 line: line + 1,
                 column: character + 1,
+                endLine: end.line,
+                endColumn: end.column,
             });
             continue;
         }
@@ -108,10 +114,16 @@ export function tokenizeTypeScript(
         const image = normalize(kind, normalizeStringContinuation(scanner.getTokenText()));
         if (image === null) continue;
         const { line, character } = sf.getLineAndCharacterOfPosition(tokenStart);
-        out.push({ image, line: line + 1, column: character + 1 });
+        const end = positionAtTokenEnd(sf, scanner.getTextPos());
+        out.push({ image, line: line + 1, column: character + 1, endLine: end.line, endColumn: end.column });
     }
 
     return out;
+}
+
+function positionAtTokenEnd(sf: ts.SourceFile, offset: number): { line: number; column: number } {
+    const { line, character } = sf.getLineAndCharacterOfPosition(offset);
+    return { line: line + 1, column: character + 1 };
 }
 
 function normalizeStringContinuation(text: string): string {

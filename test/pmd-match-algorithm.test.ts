@@ -29,8 +29,8 @@ function repeatedWindow(line: number, size: number): RawToken[] {
 }
 
 describe('PMD CPD model equivalents', () => {
-    test('TokenEntry preserves token identity and start location', () => {
-        const entry = new TokenEntry('public', 7, 0, 'Foo.java', 1, 2);
+    test('TokenEntry preserves token identity and source location', () => {
+        const entry = new TokenEntry('public', 7, 0, 'Foo.java', 1, 2, 3, 4);
 
         expect(entry.image).toBe('public');
         expect(entry.identifier).toBe(7);
@@ -38,6 +38,8 @@ describe('PMD CPD model equivalents', () => {
         expect(entry.file).toBe('Foo.java');
         expect(entry.beginLine).toBe(1);
         expect(entry.beginColumn).toBe(2);
+        expect(entry.endLine).toBe(3);
+        expect(entry.endColumn).toBe(4);
     });
 
     test('Mark wraps a token start', () => {
@@ -66,6 +68,44 @@ describe('PMD CPD model equivalents', () => {
 });
 
 describe('PMD MatchAlgorithm equivalents and edge cases', () => {
+    test('ports PMD MatchAlgorithmTest.testSimple duplicate line behavior', () => {
+        const source = [
+            'export class Foo {',
+            '  bar() {',
+            '    console.log("hello");',
+            '    console.log("hello");',
+            '    const i = 5;',
+            '    console.warn("hello");',
+            '  }',
+            '}',
+        ].join('\n');
+        const matches = detectClonesFromSources([source], {
+            minTileSize: 5,
+            ignoreIdentifiers: false,
+            ignoreLiterals: false,
+        });
+
+        expect(matches).toHaveLength(1);
+        expect(matches[0].marks.map((mark) => mark.token.beginLine)).toEqual([3, 4]);
+    });
+
+    test('ports PMD MatchAlgorithmTest.testMultipleMatches with one merged match and three marks', () => {
+        const matches = analyze(
+            [...repeatedWindow(2, 15), barrier(2), ...repeatedWindow(4, 15), barrier(4), ...repeatedWindow(6, 15)],
+            15,
+            'Foo.dummy'
+        );
+
+        expect(matches).toHaveLength(1);
+        expect(matches[0].tokenCount).toBe(15);
+        expect(matches[0].markCount).toBe(3);
+        expect(matches[0].marks.map((mark) => [mark.token.file, mark.token.beginLine])).toEqual([
+            ['Foo.dummy', 2],
+            ['Foo.dummy', 4],
+            ['Foo.dummy', 6],
+        ]);
+    });
+
     test('detects a duplicate whose length equals the minimum tile size', () => {
         const matches = analyze(
             [

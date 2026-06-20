@@ -14,6 +14,8 @@ export interface RawToken {
     image: string;
     line: number; // 1-based
     column: number; // 1-based
+    endLine?: number; // 1-based, PMD-style token end position
+    endColumn?: number; // 1-based, PMD-style exclusive end column
     barrier?: boolean; // принудительный разрыв (вставит EOF-токен с id 0)
 }
 
@@ -24,7 +26,9 @@ export class TokenEntry {
         public index: number,
         public file: string,
         public beginLine: number,
-        public beginColumn: number
+        public beginColumn: number,
+        public endLine: number = beginLine,
+        public endColumn: number = beginColumn
     ) {}
 }
 
@@ -87,7 +91,18 @@ export class CpdCore {
                 this.pushEof(file, r.line, r.column);
                 continue;
             }
-            this.tokens.push(new TokenEntry(r.image, this.intern(r.image), this.tokens.length, file, r.line, r.column));
+            this.tokens.push(
+                new TokenEntry(
+                    r.image,
+                    this.intern(r.image),
+                    this.tokens.length,
+                    file,
+                    r.line,
+                    r.column,
+                    r.endLine ?? r.line,
+                    r.endColumn ?? r.column
+                )
+            );
         }
         this.pushEof(file, 0, 0);
     }

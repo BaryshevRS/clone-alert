@@ -177,6 +177,9 @@ describe('PMD CPD CLI duplicate-search compatibility', () => {
         expect(stdout).toContain('tokens="');
         expect(stdout).toContain('<file ');
         expect(stdout).toContain('line="1"');
+        expect(stdout).toContain('endline="5"');
+        expect(stdout).toContain('column="1"');
+        expect(stdout).toContain('endcolumn="2"');
         expect(stdout).toContain('&quot;');
     });
 
