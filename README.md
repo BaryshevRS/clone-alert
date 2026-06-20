@@ -1,1 +1,73 @@
 # clone-alert
+
+Минимальный клон PMD CPD для поиска copy-paste по токенам в TypeScript,
+JavaScript и популярных frontend-шаблонах.
+
+Ядро лежит в `src/core.ts`, токенайзеры в `src/tokenizers.ts`, CLI в
+`src/cli.ts`.
+
+## Установка и сборка
+
+Проект собирается TypeScript 6 (`typescript@^6.0.3`) и Node.js 18+.
+
+```sh
+npm install
+npm run build
+```
+
+После сборки CLI доступен как `dist/cli.js`. Через npm-bin:
+
+```sh
+npx clone-alert --help
+```
+
+Локально без публикации:
+
+```sh
+node dist/cli.js --minimum-tokens 50 --files src
+```
+
+## Использование
+
+```sh
+clone-alert [options] [<path>...]
+```
+
+Основные опции совместимы по духу с `pmd cpd`:
+
+- `--files <path[,path...]>` - файлы или директории для анализа.
+- `--minimum-tokens <n>` - минимальная длина дубля в токенах, по умолчанию `50`.
+- `--minimum-tile-size <n>` - алиас для `--minimum-tokens`.
+- `--format <text|xml|json>` - формат отчета, по умолчанию `text`.
+- `--extensions <ext[,ext...]>` - список расширений для рекурсивного обхода.
+- `--ignore-identifiers` / `--no-ignore-identifiers` - нормализовать или сравнивать имена.
+- `--ignore-literals` / `--no-ignore-literals` - нормализовать или сравнивать литералы.
+- `--skip-angular-inline-templates` - не анализировать inline template в `@Component`.
+- `--fail-on-violation` - вернуть exit code `4`, если дубли найдены.
+
+Примеры:
+
+```sh
+node dist/cli.js --minimum-tokens 30 --files src --fail-on-violation
+node dist/cli.js --minimum-tokens 50 --format xml src test
+node dist/cli.js --format json --files src,packages
+```
+
+Поддерживаемые расширения по умолчанию:
+
+```text
+.ts, .tsx, .js, .jsx, .mts, .cts, .mjs, .cjs, .vue, .svelte, .html, .htm
+```
+
+Для `.vue`, `.svelte` и Angular HTML токенайзеры используют optional peer-пакеты
+`@vue/compiler-sfc`, `svelte` и `@angular/compiler`. Если пакет не установлен,
+соответствующие файлы будут пропущены с предупреждением.
+
+## Проверка
+
+```sh
+npm test
+```
+
+Тесты собирают проект и проверяют smoke-сценарии CLI: `--help` и обнаружение
+дубля в двух TypeScript-файлах.

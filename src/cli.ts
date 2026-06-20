@@ -1,0 +1,303 @@
+#!/usr/bin/env node
+
+import * as fs from 'fs';
+import * as path from 'path';
+import { Cpd, CpdOptions } from './index';
+import { Match } from './core';
+
+type ReportFormat = 'text' | 'xml' | 'json';
+
+interface CliOptions extends CpdOptions {
+    paths: string[];
+    extensions: Set<string>;
+    format: ReportFormat;
+    failOnViolation: boolean;
+}
+
+const DEFAULT_EXTENSIONS = [
+    '.ts',
+    '.tsx',
+    '.js',
+    '.jsx',
+    '.mts',
+    '.cts',
+    '.mjs',
+    '.cjs',
+    '.vue',
+    '.svelte',
+    '.html',
+    '.htm',
+];
+
+const HELP = `Usage: clone-alert [options] [<path>...]
+
+PMD CPD-like copy-paste detector for TS/JS and common frontend templates.
+
+Options:
+  --files <path[,path...]>        Files or directories to scan. Can be repeated.
+  --minimum-tokens <n>            Minimum duplicated token span. Default: 50.
+  --minimum-tile-size <n>         Alias for --minimum-tokens.
+  --format <text|xml|json>        Report format. Default: text.
+  --extensions <ext[,ext...]>     Extensions to include. Default: ts,tsx,js,jsx,vue,svelte,html.
+  --ignore-identifiers            Normalize identifiers. Default.
+  --no-ignore-identifiers         Compare exact identifiers.
+  --ignore-literals               Normalize literals. Default.
+  --no-ignore-literals            Compare exact literals.
+  --skip-angular-inline-templates Do not scan inline Angular component templates.
+  --fail-on-violation             Exit with code 4 when duplications are found.
+  -h, --help                      Show this help.
+  -V, --version                   Show version.
+
+Examples:
+  clone-alert --minimum-tokens 50 --files src
+  clone-alert --minimum-tokens 30 --format xml src test
+`;
+
+function main(argv: string[]): number {
+    let options: CliOptions;
+    try {
+        options = parseArgs(argv);
+    } catch (error) {
+        console.error(`clone-alert: ${(error as Error).message}`);
+        console.error("Try 'clone-alert --help' for more information.");
+        return 2;
+    }
+
+    if (options.paths.length === 0) {
+        console.error('clone-alert: missing files or directories to scan');
+        console.error("Try 'clone-alert --help' for more information.");
+        return 2;
+    }
+
+    const files = collectFiles(options.paths, options.extensions);
+    if (files.length === 0) {
+        console.error('clone-alert: no supported files found');
+        return 2;
+    }
+
+    const cpd = new Cpd(options);
+    for (const file of files) {
+        cpd.addPath(file);
+    }
+
+    const matches = cpd.run();
+    process.stdout.write(formatReport(options.format, cpd, matches));
+    return options.failOnViolation && matches.length > 0 ? 4 : 0;
+}
+
+function parseArgs(argv: string[]): CliOptions {
+    const paths: string[] = [];
+    const extensions = new Set(DEFAULT_EXTENSIONS);
+    let minTileSize = 50;
+    let ignoreIdentifiers = true;
+    let ignoreLiterals = true;
+    let angularInlineTemplates = true;
+    let format: ReportFormat = 'text';
+    let failOnViolation = false;
+
+    for (let i = 0; i < argv.length; i++) {
+        const arg = argv[i];
+
+        if (arg === '-h' || arg === '--help') {
+            console.log(HELP);
+            process.exit(0);
+        }
+        if (arg === '-V' || arg === '--version') {
+            console.log(readVersion());
+            process.exit(0);
+        }
+        if (arg === '--files') {
+            paths.push(...splitList(requireValue(argv, ++i, arg)));
+            continue;
+        }
+        if (arg.startsWith('--files=')) {
+            paths.push(...splitList(arg.slice('--files='.length)));
+            continue;
+        }
+        if (arg === '--minimum-tokens' || arg === '--minimum-tile-size') {
+            minTileSize = parsePositiveInteger(requireValue(argv, ++i, arg), arg);
+            continue;
+        }
+        if (arg.startsWith('--minimum-tokens=')) {
+            minTileSize = parsePositiveInteger(arg.slice('--minimum-tokens='.length), '--minimum-tokens');
+            continue;
+        }
+        if (arg.startsWith('--minimum-tile-size=')) {
+            minTileSize = parsePositiveInteger(arg.slice('--minimum-tile-size='.length), '--minimum-tile-size');
+            continue;
+        }
+        if (arg === '--format') {
+            format = parseFormat(requireValue(argv, ++i, arg));
+            continue;
+        }
+        if (arg.startsWith('--format=')) {
+            format = parseFormat(arg.slice('--format='.length));
+            continue;
+        }
+        if (arg === '--extensions') {
+            replaceExtensions(extensions, requireValue(argv, ++i, arg));
+            continue;
+        }
+        if (arg.startsWith('--extensions=')) {
+            replaceExtensions(extensions, arg.slice('--extensions='.length));
+            continue;
+        }
+        if (arg === '--ignore-identifiers') {
+            ignoreIdentifiers = true;
+            continue;
+        }
+        if (arg === '--no-ignore-identifiers') {
+            ignoreIdentifiers = false;
+            continue;
+        }
+        if (arg === '--ignore-literals') {
+            ignoreLiterals = true;
+            continue;
+        }
+        if (arg === '--no-ignore-literals') {
+            ignoreLiterals = false;
+            continue;
+        }
+        if (arg === '--skip-angular-inline-templates') {
+            angularInlineTemplates = false;
+            continue;
+        }
+        if (arg === '--fail-on-violation') {
+            failOnViolation = true;
+            continue;
+        }
+        if (arg.startsWith('-')) {
+            throw new Error(`unknown option: ${arg}`);
+        }
+        paths.push(arg);
+    }
+
+    return {
+        paths,
+        extensions,
+        minTileSize,
+        ignoreIdentifiers,
+        ignoreLiterals,
+        angularInlineTemplates,
+        format,
+        failOnViolation,
+    };
+}
+
+function requireValue(argv: string[], index: number, option: string): string {
+    const value = argv[index];
+    if (!value || value.startsWith('-')) {
+        throw new Error(`${option} requires a value`);
+    }
+    return value;
+}
+
+function splitList(value: string): string[] {
+    return value.split(',').map(item => item.trim()).filter(Boolean);
+}
+
+function parsePositiveInteger(value: string, option: string): number {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+        throw new Error(`${option} must be a positive integer`);
+    }
+    return parsed;
+}
+
+function parseFormat(value: string): ReportFormat {
+    if (value === 'text' || value === 'xml' || value === 'json') {
+        return value;
+    }
+    throw new Error('--format must be one of: text, xml, json');
+}
+
+function replaceExtensions(target: Set<string>, value: string): void {
+    target.clear();
+    for (const ext of splitList(value)) {
+        target.add(ext.startsWith('.') ? ext.toLowerCase() : `.${ext.toLowerCase()}`);
+    }
+}
+
+function collectFiles(paths: string[], extensions: Set<string>): string[] {
+    const files: string[] = [];
+    const seen = new Set<string>();
+
+    const visit = (entry: string) => {
+        const full = path.resolve(entry);
+        if (!fs.existsSync(full)) {
+            throw new Error(`path does not exist: ${entry}`);
+        }
+
+        const stat = fs.statSync(full);
+        if (stat.isDirectory()) {
+            for (const child of fs.readdirSync(full).sort()) {
+                if (child === 'node_modules' || child === '.git' || child === 'dist') continue;
+                visit(path.join(full, child));
+            }
+            return;
+        }
+
+        if (!stat.isFile()) return;
+        if (!extensions.has(path.extname(full).toLowerCase())) return;
+        if (seen.has(full)) return;
+        seen.add(full);
+        files.push(full);
+    };
+
+    for (const entry of paths) visit(entry);
+    return files;
+}
+
+function formatReport(format: ReportFormat, cpd: Cpd, matches: Match[]): string {
+    if (format === 'json') {
+        return `${JSON.stringify(matches.map(matchToJson), null, 2)}\n`;
+    }
+    if (format === 'xml') {
+        return formatXml(matches);
+    }
+    return cpd.report(matches);
+}
+
+function matchToJson(match: Match) {
+    return {
+        tokenCount: match.tokenCount,
+        occurrences: match.marks.map(mark => ({
+            file: mark.token.file,
+            line: mark.token.beginLine,
+            column: mark.token.beginColumn,
+        })),
+    };
+}
+
+function formatXml(matches: Match[]): string {
+    const lines = ['<?xml version="1.0" encoding="UTF-8"?>', '<pmd-cpd>'];
+    for (const match of matches) {
+        lines.push(`  <duplication tokens="${match.tokenCount}" occurrences="${match.markCount}">`);
+        for (const mark of match.marks) {
+            const token = mark.token;
+            lines.push(`    <file path="${escapeXml(token.file)}" line="${token.beginLine}" column="${token.beginColumn}" />`);
+        }
+        lines.push('  </duplication>');
+    }
+    lines.push('</pmd-cpd>');
+    return `${lines.join('\n')}\n`;
+}
+
+function escapeXml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function readVersion(): string {
+    const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'package.json'), 'utf-8')) as { version?: string };
+    return pkg.version ?? '0.0.0';
+}
+
+if (require.main === module) {
+    process.exitCode = main(process.argv.slice(2));
+}
+
+export { main, parseArgs, collectFiles };

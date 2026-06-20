@@ -1,0 +1,28 @@
+{
+  "name": "clone-alert",
+  "version": "0.1.0",
+  "description": "Minimal PMD CPD-like copy-paste detector for TypeScript, JavaScript and templates.",
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "clone-alert": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "typescript": "^6.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
