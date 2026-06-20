@@ -1,8 +1,6 @@
 // tokenizers.ts
 import * as ts from 'typescript';
-import {
-    RawToken, TS_ID, TS_LIT, NG_TEXT, NG_INTERP
-} from './core';
+import { NG_INTERP, NG_TEXT, type RawToken, TS_ID, TS_LIT } from './core';
 
 // ESM-пользователям: заменить require на createRequire(import.meta.url)
 // или сделать функции async с dynamic import.
@@ -19,10 +17,16 @@ const DEFAULTS: Required<TokenizeOptions> = {
 };
 
 function optional<T = any>(name: string): T | null {
-    try { return require(name); } catch { return null; }
+    try {
+        return require(name);
+    } catch {
+        return null;
+    }
 }
 
-let warnedVue = false, warnedSvelte = false, warnedNg = false;
+let warnedVue = false;
+let warnedSvelte = false;
+let warnedNg = false;
 
 // --- Ремаппинг позиций встроенного блока в координаты файла ---
 // Токены блока считаются от (0,0) внутри блока; baseLine/baseCol (1-based) дают
@@ -104,7 +108,10 @@ export function scriptKindFor(ext: string): ts.ScriptKind {
 export function tokenizeVue(filePath: string, source: string, opts: TokenizeOptions = {}): RawToken[] {
     const sfc = optional('@vue/compiler-sfc');
     if (!sfc) {
-        if (!warnedVue) { console.warn('[cpd] .vue пропущен: установите @vue/compiler-sfc'); warnedVue = true; }
+        if (!warnedVue) {
+            console.warn('[cpd] .vue пропущен: установите @vue/compiler-sfc');
+            warnedVue = true;
+        }
         return [];
     }
     const { descriptor } = sfc.parse(source, { filename: filePath });
@@ -112,10 +119,10 @@ export function tokenizeVue(filePath: string, source: string, opts: TokenizeOpti
     for (const block of [descriptor.scriptSetup, descriptor.script]) {
         if (!block) continue;
         const lang = block.lang ?? 'js';
-        const kind = lang === 'tsx' || lang === 'jsx' ? ts.ScriptKind.TSX
-            : lang === 'ts' ? ts.ScriptKind.TS : ts.ScriptKind.JS;
-        const baseLine = block.loc.start.line;       // 1-based
-        const baseCol = block.loc.start.column;       // 1-based
+        const kind =
+            lang === 'tsx' || lang === 'jsx' ? ts.ScriptKind.TSX : lang === 'ts' ? ts.ScriptKind.TS : ts.ScriptKind.JS;
+        const baseLine = block.loc.start.line; // 1-based
+        const baseCol = block.loc.start.column; // 1-based
         const toks = tokenizeTypeScript(filePath, block.content, opts, kind);
         for (const t of toks) out.push(remap(t, baseLine, baseCol));
         out.push({ image: '', line: baseLine, column: baseCol, barrier: true });
@@ -129,7 +136,10 @@ export function tokenizeVue(filePath: string, source: string, opts: TokenizeOpti
 export function tokenizeSvelte(filePath: string, source: string, opts: TokenizeOptions = {}): RawToken[] {
     const svelte = optional('svelte/compiler');
     if (!svelte) {
-        if (!warnedSvelte) { console.warn('[cpd] .svelte пропущен: установите svelte'); warnedSvelte = true; }
+        if (!warnedSvelte) {
+            console.warn('[cpd] .svelte пропущен: установите svelte');
+            warnedSvelte = true;
+        }
         return [];
     }
     const ast = svelte.parse(source, { filename: filePath });
@@ -147,9 +157,15 @@ export function tokenizeSvelte(filePath: string, source: string, opts: TokenizeO
 }
 
 function offsetToLineCol(source: string, offset: number): { line: number; col: number } {
-    let line = 1, col = 1;
+    let line = 1;
+    let col = 1;
     for (let i = 0; i < offset && i < source.length; i++) {
-        if (source[i] === '\n') { line++; col = 1; } else { col++; }
+        if (source[i] === '\n') {
+            line++;
+            col = 1;
+        } else {
+            col++;
+        }
     }
     return { line, col };
 }
@@ -164,7 +180,10 @@ export function tokenizeAngularHtml(
 ): RawToken[] {
     const ngc = optional('@angular/compiler');
     if (!ngc || typeof ngc.parseTemplate !== 'function') {
-        if (!warnedNg) { console.warn('[cpd] Angular-шаблон пропущен: установите @angular/compiler'); warnedNg = true; }
+        if (!warnedNg) {
+            console.warn('[cpd] Angular-шаблон пропущен: установите @angular/compiler');
+            warnedNg = true;
+        }
         return [];
     }
     let parsed: any;
@@ -187,7 +206,7 @@ export function tokenizeAngularHtml(
 
         // Element (есть имя тега + дети)
         if (typeof node.name === 'string' && Array.isArray(node.children)) {
-            emit('<' + node.name, node);
+            emit(`<${node.name}`, node);
             for (const a of node.attributes ?? []) walk(a);
             for (const a of node.inputs ?? []) walk(a);
             for (const a of node.outputs ?? []) walk(a);
@@ -197,7 +216,7 @@ export function tokenizeAngularHtml(
         }
         // Контейнеры: ng-template, control-flow блоки (@if/@for/@switch/@defer)
         if (Array.isArray(node.children) || Array.isArray(node.branches) || Array.isArray(node.cases)) {
-            if (typeof node.tagName === 'string') emit('<' + node.tagName, node);
+            if (typeof node.tagName === 'string') emit(`<${node.tagName}`, node);
             for (const a of node.attributes ?? []) walk(a);
             for (const a of node.templateAttrs ?? []) walk(a);
             for (const c of node.children ?? []) walk(c);
@@ -207,7 +226,7 @@ export function tokenizeAngularHtml(
         }
         // Атрибут / input / output / reference: имя структурно, значение нормализуем
         if (typeof node.name === 'string') {
-            emit('@attr:' + node.name, node);
+            emit(`@attr:${node.name}`, node);
             return;
         }
         // BoundText / интерполяция (value это AST-выражение)
@@ -223,7 +242,7 @@ export function tokenizeAngularHtml(
     };
     for (const n of parsed.nodes) walk(n);
 
-    return local.map(t => remap(t, base.line, base.col));
+    return local.map((t) => remap(t, base.line, base.col));
 }
 
 // --- Извлечение inline-шаблонов из @Component({ template: `...` }) ---

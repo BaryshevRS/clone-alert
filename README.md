@@ -66,8 +66,10 @@ node dist/cli.js --format json --files src,packages
 ## Проверка
 
 ```sh
+npm run lint
 npm test
 ```
 
-Тесты собирают проект и проверяют smoke-сценарии CLI: `--help` и обнаружение
-дубля в двух TypeScript-файлах.
+`npm run lint` запускает Biome auto-check, Knip, TypeScript typecheck и встроенный
+`clone-alert` CPD-аналог вместо PMD. Тесты собирают проект и проверяют
+smoke-сценарии CLI: `--help` и обнаружение дубля в двух TypeScript-файлах.

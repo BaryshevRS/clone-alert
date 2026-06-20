@@ -1,18 +1,18 @@
 // index.ts
-import * as fs from 'fs';
-import * as path from 'path';
-import { CpdCore, Match, RawToken } from './core';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { CpdCore, type Match, type RawToken } from './core';
 import {
-    TokenizeOptions,
-    tokenizeTypeScript,
-    tokenizeVue,
-    tokenizeSvelte,
-    tokenizeAngularHtml,
     extractAngularInlineTemplates,
     scriptKindFor,
+    type TokenizeOptions,
+    tokenizeAngularHtml,
+    tokenizeSvelte,
+    tokenizeTypeScript,
+    tokenizeVue,
 } from './tokenizers';
 
-export { Match, Mark, TokenEntry } from './core';
+export { Mark, Match, TokenEntry } from './core';
 
 export interface CpdOptions extends TokenizeOptions {
     minTileSize?: number;

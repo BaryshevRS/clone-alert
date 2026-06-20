@@ -5,15 +5,15 @@
 // Сентинелы нормализации. Префикс из private-use области Unicode,
 // чтобы гарантированно не пересекаться с реальными образами исходника.
 export const S = '\uE000';
-export const TS_ID = S + 'ID';        // нормализованный идентификатор (TS)
-export const TS_LIT = S + 'LIT';      // нормализованный литерал (TS)
-export const NG_TEXT = S + 'NGTEXT';  // статический текст шаблона
-export const NG_INTERP = S + 'NGINTERP'; // интерполяция/binding шаблона
+export const TS_ID = `${S}ID`; // нормализованный идентификатор (TS)
+export const TS_LIT = `${S}LIT`; // нормализованный литерал (TS)
+export const NG_TEXT = `${S}NGTEXT`; // статический текст шаблона
+export const NG_INTERP = `${S}NGINTERP`; // интерполяция/binding шаблона
 
 export interface RawToken {
     image: string;
-    line: number;    // 1-based
-    column: number;  // 1-based
+    line: number; // 1-based
+    column: number; // 1-based
     barrier?: boolean; // принудительный разрыв (вставит EOF-токен с id 0)
 }
 
@@ -36,7 +36,11 @@ export class Match {
     // Дедуп по индексу токена (PMD использует TreeSet по index, а не по ссылке).
     private markMap = new Map<number, Mark>();
 
-    constructor(public tokenCount: number, first: Mark, second: Mark) {
+    constructor(
+        public tokenCount: number,
+        first: Mark,
+        second: Mark
+    ) {
         this.markMap.set(first.token.index, first);
         this.markMap.set(second.token.index, second);
     }
@@ -61,9 +65,7 @@ export class CpdCore {
     private imageToId = new Map<string, number>();
     private currentImageId = 1; // 0 зарезервирован под EOF/барьер
 
-    constructor(
-        private minTileSize: number = 50
-    ) {}
+    constructor(private minTileSize: number = 50) {}
 
     private intern(image: string): number {
         let id = this.imageToId.get(image);
@@ -85,14 +87,7 @@ export class CpdCore {
                 this.pushEof(file, r.line, r.column);
                 continue;
             }
-            this.tokens.push(new TokenEntry(
-                r.image,
-                this.intern(r.image),
-                this.tokens.length,
-                file,
-                r.line,
-                r.column
-            ));
+            this.tokens.push(new TokenEntry(r.image, this.intern(r.image), this.tokens.length, file, r.line, r.column));
         }
         this.pushEof(file, 0, 0);
     }
@@ -177,7 +172,10 @@ class MatchCollector {
     private matchTree = new Map<number, Match[]>();
     private tokenMatchSets = new Map<number, Set<number>>();
 
-    constructor(private ma: CpdCore, private minTileSize: number) {}
+    constructor(
+        private ma: CpdCore,
+        private minTileSize: number
+    ) {}
 
     public collect(marks: TokenEntry[]) {
         let skipped = 0;
@@ -255,9 +253,15 @@ class MatchCollector {
 
     private registerTokenMatch(mark1: TokenEntry, mark2: TokenEntry) {
         let s1 = this.tokenMatchSets.get(mark1.index);
-        if (!s1) { s1 = new Set(); this.tokenMatchSets.set(mark1.index, s1); }
+        if (!s1) {
+            s1 = new Set();
+            this.tokenMatchSets.set(mark1.index, s1);
+        }
         let s2 = this.tokenMatchSets.get(mark2.index);
-        if (!s2) { s2 = new Set(); this.tokenMatchSets.set(mark2.index, s2); }
+        if (!s2) {
+            s2 = new Set();
+            this.tokenMatchSets.set(mark2.index, s2);
+        }
         s1.add(mark2.index);
         s2.add(mark1.index);
     }
@@ -289,8 +293,6 @@ class MatchCollector {
     }
 
     private matchEnded(token1: TokenEntry, token2: TokenEntry): boolean {
-        return token1.identifier !== token2.identifier
-            || token1.identifier === 0
-            || token2.identifier === 0;
+        return token1.identifier !== token2.identifier || token1.identifier === 0 || token2.identifier === 0;
     }
 }

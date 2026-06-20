@@ -14,13 +14,21 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
+    "check-types": "tsc -p tsconfig.json --noEmit",
+    "lint": "npm run check:fix && npm run lint:knip && npm run check-types && npm run lint:cpd",
+    "lint:cpd": "npm run build && node dist/cli.js --minimum-tokens 70 --files src --extensions ts --format text --fail-on-violation",
+    "lint:knip": "knip",
     "test": "npm run build && node --test test/*.test.mjs"
   },
   "dependencies": {
     "typescript": "^6.0.3"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0"
+    "@biomejs/biome": "^2.5.0",
+    "@types/node": "^24.0.0",
+    "knip": "^6.5.0"
   },
   "engines": {
     "node": ">=18"

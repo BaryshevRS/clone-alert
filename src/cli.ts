@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { Cpd, CpdOptions } from './index';
-import { Match } from './core';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import type { Match } from './core';
+import { Cpd, type CpdOptions } from './index';
 
 type ReportFormat = 'text' | 'xml' | 'json';
 
@@ -193,7 +193,10 @@ function requireValue(argv: string[], index: number, option: string): string {
 }
 
 function splitList(value: string): string[] {
-    return value.split(',').map(item => item.trim()).filter(Boolean);
+    return value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
 }
 
 function parsePositiveInteger(value: string, option: string): number {
@@ -261,7 +264,7 @@ function formatReport(format: ReportFormat, cpd: Cpd, matches: Match[]): string 
 function matchToJson(match: Match) {
     return {
         tokenCount: match.tokenCount,
-        occurrences: match.marks.map(mark => ({
+        occurrences: match.marks.map((mark) => ({
             file: mark.token.file,
             line: mark.token.beginLine,
             column: mark.token.beginColumn,
@@ -275,7 +278,9 @@ function formatXml(matches: Match[]): string {
         lines.push(`  <duplication tokens="${match.tokenCount}" occurrences="${match.markCount}">`);
         for (const mark of match.marks) {
             const token = mark.token;
-            lines.push(`    <file path="${escapeXml(token.file)}" line="${token.beginLine}" column="${token.beginColumn}" />`);
+            lines.push(
+                `    <file path="${escapeXml(token.file)}" line="${token.beginLine}" column="${token.beginColumn}" />`
+            );
         }
         lines.push('  </duplication>');
     }
@@ -284,15 +289,13 @@ function formatXml(matches: Match[]): string {
 }
 
 function escapeXml(value: string): string {
-    return value
-        .replace(/&/g, '&amp;')
-        .replace(/"/g, '&quot;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+    return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function readVersion(): string {
-    const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'package.json'), 'utf-8')) as { version?: string };
+    const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'package.json'), 'utf-8')) as {
+        version?: string;
+    };
     return pkg.version ?? '0.0.0';
 }
 
@@ -300,4 +303,4 @@ if (require.main === module) {
     process.exitCode = main(process.argv.slice(2));
 }
 
-export { main, parseArgs, collectFiles };
+export { collectFiles, main, parseArgs };
