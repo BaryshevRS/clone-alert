@@ -40,6 +40,7 @@ clone-alert [options] [<path>...]
 - `--minimum-tile-size <n>` - алиас для `--minimum-tokens`.
 - `--format <text|xml|json>` - формат отчета, по умолчанию `text`.
 - `--extensions <ext[,ext...]>` - список расширений для рекурсивного обхода.
+- `--exclude <glob[,glob...]>` - исключить файлы или директории, можно повторять.
 - `--ignore-identifiers` / `--no-ignore-identifiers` - нормализовать или сравнивать имена.
 - `--ignore-literals` / `--no-ignore-literals` - нормализовать или сравнивать литералы.
 - `--skip-angular-inline-templates` - не анализировать inline template в `@Component`.
@@ -50,7 +51,7 @@ clone-alert [options] [<path>...]
 ```sh
 node dist/cli.js --minimum-tokens 30 --files src --fail-on-violation
 node dist/cli.js --minimum-tokens 50 --format xml src test
-node dist/cli.js --format json --files src,packages
+node dist/cli.js --format json --files src,packages --exclude '**/generated/**'
 ```
 
 Поддерживаемые расширения по умолчанию:

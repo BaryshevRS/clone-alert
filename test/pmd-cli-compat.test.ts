@@ -69,15 +69,17 @@ describe('PMD CPD CLI duplicate-search compatibility', () => {
             '--files',
             directory,
         ]);
-        const report = JSON.parse(stdout) as Array<{
-            tokenCount: number;
-            occurrences: Array<{ file: string; line: number; column: number }>;
-        }>;
+        const report = JSON.parse(stdout) as {
+            duplicates: Array<{
+                tokens: number;
+                files: Array<{ path: string; startLine: number; startColumn: number }>;
+            }>;
+        };
 
-        expect(report.length).toBeGreaterThanOrEqual(1);
-        expect(report[0].tokenCount).toBeGreaterThanOrEqual(5);
-        expect(report[0].occurrences).toHaveLength(2);
-        expect(report[0].occurrences.map((occurrence) => path.basename(occurrence.file))).toEqual([
+        expect(report.duplicates.length).toBeGreaterThanOrEqual(1);
+        expect(report.duplicates[0].tokens).toBeGreaterThanOrEqual(5);
+        expect(report.duplicates[0].files).toHaveLength(2);
+        expect(report.duplicates[0].files.map((occurrence) => path.basename(occurrence.path))).toEqual([
             'dup1.ts',
             'dup2.ts',
         ]);

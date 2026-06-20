@@ -1,7 +1,7 @@
 // index.ts
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { CpdCore, type Match, type RawToken } from './core';
+import { CpdCore, type Mark, type Match, type RawToken } from './core';
 import {
     extractAngularInlineTemplates,
     scriptKindFor,
@@ -18,6 +18,14 @@ export interface CpdOptions extends TokenizeOptions {
     minTileSize?: number;
     /** Извлекать inline-шаблоны из @Component для .ts (по умолчанию true). */
     angularInlineTemplates?: boolean;
+}
+
+export interface MatchLocation {
+    path: string;
+    startLine: number;
+    startColumn: number;
+    endLine: number;
+    endColumn: number;
 }
 
 const TS_EXT = new Set(['.ts', '.mts', '.cts']);
@@ -92,6 +100,18 @@ export class Cpd {
 
     public run(): Match[] {
         return this.core.analyze();
+    }
+
+    public locationForMark(mark: Mark, tokenCount: number): MatchLocation {
+        const start = mark.token;
+        const end = this.core.tokens[start.index + tokenCount - 1] ?? start;
+        return {
+            path: start.file,
+            startLine: start.beginLine,
+            startColumn: start.beginColumn,
+            endLine: end.beginLine,
+            endColumn: end.beginColumn,
+        };
     }
 
     /** Простой текстовый отчёт для глазной проверки / дифф-теста. */

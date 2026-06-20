@@ -10,6 +10,7 @@ type ReportFormat = 'text' | 'xml' | 'json';
 interface CliOptions extends CpdOptions {
     paths: string[];
     extensions: Set<string>;
+    excludePatterns: string[];
     format: ReportFormat;
     failOnViolation: boolean;
 }
@@ -39,6 +40,7 @@ Options:
   --minimum-tile-size <n>         Alias for --minimum-tokens.
   --format <text|xml|json>        Report format. Default: text.
   --extensions <ext[,ext...]>     Extensions to include. Default: ts,tsx,js,jsx,vue,svelte,html.
+  --exclude <glob[,glob...]>      Exclude files or directories. Can be repeated.
   --ignore-identifiers            Normalize identifiers. Default.
   --no-ignore-identifiers         Compare exact identifiers.
   --ignore-literals               Normalize literals. Default.
@@ -71,7 +73,7 @@ function main(argv: string[]): number {
 
     let files: string[];
     try {
-        files = collectFiles(options.paths, options.extensions);
+        files = collectFiles(options.paths, options.extensions, options.excludePatterns);
     } catch (error) {
         console.error(`clone-alert: ${(error as Error).message}`);
         return 2;
@@ -94,6 +96,7 @@ function main(argv: string[]): number {
 function parseArgs(argv: string[]): CliOptions {
     const paths: string[] = [];
     const extensions = new Set(DEFAULT_EXTENSIONS);
+    const excludePatterns: string[] = [];
     let minTileSize = 50;
     let ignoreIdentifiers = true;
     let ignoreLiterals = true;
@@ -148,6 +151,14 @@ function parseArgs(argv: string[]): CliOptions {
             replaceExtensions(extensions, arg.slice('--extensions='.length));
             continue;
         }
+        if (arg === '--exclude') {
+            excludePatterns.push(...splitList(requireValue(argv, ++i, arg)));
+            continue;
+        }
+        if (arg.startsWith('--exclude=')) {
+            excludePatterns.push(...splitList(arg.slice('--exclude='.length)));
+            continue;
+        }
         if (arg === '--ignore-identifiers') {
             ignoreIdentifiers = true;
             continue;
@@ -181,6 +192,7 @@ function parseArgs(argv: string[]): CliOptions {
     return {
         paths,
         extensions,
+        excludePatterns,
         minTileSize,
         ignoreIdentifiers,
         ignoreLiterals,
@@ -227,9 +239,10 @@ function replaceExtensions(target: Set<string>, value: string): void {
     }
 }
 
-function collectFiles(paths: string[], extensions: Set<string>): string[] {
+function collectFiles(paths: string[], extensions: Set<string>, excludePatterns: string[] = []): string[] {
     const files: string[] = [];
     const seen = new Set<string>();
+    const excludeMatchers = excludePatterns.map((pattern) => globToRegExp(toPosix(pattern)));
 
     const visit = (entry: string) => {
         const full = path.resolve(entry);
@@ -239,6 +252,7 @@ function collectFiles(paths: string[], extensions: Set<string>): string[] {
 
         const stat = fs.statSync(full);
         if (stat.isDirectory()) {
+            if (isExcluded(`${full}${path.sep}`, excludeMatchers)) return;
             for (const child of fs.readdirSync(full).sort()) {
                 if (child === 'node_modules' || child === '.git' || child === 'dist') continue;
                 visit(path.join(full, child));
@@ -247,6 +261,7 @@ function collectFiles(paths: string[], extensions: Set<string>): string[] {
         }
 
         if (!stat.isFile()) return;
+        if (isExcluded(full, excludeMatchers)) return;
         if (!extensions.has(path.extname(full).toLowerCase())) return;
         if (seen.has(full)) return;
         seen.add(full);
@@ -259,7 +274,7 @@ function collectFiles(paths: string[], extensions: Set<string>): string[] {
 
 function formatReport(format: ReportFormat, cpd: Cpd, matches: Match[]): string {
     if (format === 'json') {
-        return `${JSON.stringify(matches.map(matchToJson), null, 2)}\n`;
+        return `${JSON.stringify({ duplicates: matches.map((match) => matchToJson(match, cpd)) }, null, 2)}\n`;
     }
     if (format === 'xml') {
         return formatXml(matches);
@@ -267,14 +282,12 @@ function formatReport(format: ReportFormat, cpd: Cpd, matches: Match[]): string 
     return cpd.report(matches);
 }
 
-function matchToJson(match: Match) {
+function matchToJson(match: Match, cpd: Cpd) {
+    const files = match.marks.map((mark) => cpd.locationForMark(mark, match.tokenCount));
     return {
-        tokenCount: match.tokenCount,
-        occurrences: match.marks.map((mark) => ({
-            file: mark.token.file,
-            line: mark.token.beginLine,
-            column: mark.token.beginColumn,
-        })),
+        lines: Math.max(0, ...files.map((file) => file.endLine - file.startLine + 1)),
+        tokens: match.tokenCount,
+        files,
     };
 }
 
@@ -292,6 +305,37 @@ function formatXml(matches: Match[]): string {
     }
     lines.push('</pmd-cpd>');
     return `${lines.join('\n')}\n`;
+}
+
+function isExcluded(filePath: string, matchers: RegExp[]): boolean {
+    const normalized = toPosix(filePath);
+    return matchers.some((matcher) => matcher.test(normalized));
+}
+
+function toPosix(value: string): string {
+    return value.split(path.sep).join('/');
+}
+
+function globToRegExp(pattern: string): RegExp {
+    let source = '';
+    for (let index = 0; index < pattern.length; index++) {
+        const char = pattern[index];
+        if (char === '*') {
+            if (pattern[index + 1] === '*') {
+                source += '.*';
+                index++;
+            } else {
+                source += '[^/]*';
+            }
+            continue;
+        }
+        source += escapeRegExp(char);
+    }
+    return new RegExp(`^${source}$`);
+}
+
+function escapeRegExp(char: string): string {
+    return /[\\^$+?.()|[\]{}]/.test(char) ? `\\${char}` : char;
 }
 
 function escapeXml(value: string): string {
