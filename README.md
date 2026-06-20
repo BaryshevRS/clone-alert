@@ -71,5 +71,6 @@ npm test
 ```
 
 `npm run lint` запускает Biome auto-check, Knip, TypeScript typecheck и встроенный
-`clone-alert` CPD-аналог вместо PMD. Тесты собирают проект и проверяют
-smoke-сценарии CLI: `--help` и обнаружение дубля в двух TypeScript-файлах.
+`clone-alert` CPD-аналог вместо PMD. `npm test` собирает проект и запускает
+Vitest-набор: CLI smoke/compat tests, алгоритмические CPD edge cases и golden
+fixtures PMD для JavaScript/TypeScript CPD tokenizer.

@@ -69,7 +69,13 @@ function main(argv: string[]): number {
         return 2;
     }
 
-    const files = collectFiles(options.paths, options.extensions);
+    let files: string[];
+    try {
+        files = collectFiles(options.paths, options.extensions);
+    } catch (error) {
+        console.error(`clone-alert: ${(error as Error).message}`);
+        return 2;
+    }
     if (files.length === 0) {
         console.error('clone-alert: no supported files found');
         return 2;

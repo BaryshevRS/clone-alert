@@ -41,9 +41,8 @@ function remap(tok: RawToken, baseLine: number, baseCol: number): RawToken {
     };
 }
 
-// --- TS / TSX / JSX через обход листьев AST ---
-// Парсер сам разруливает regex, template literals и JSX, поэтому никакого
-// ручного reScan*. Один парс вместо createScanner + createSourceFile.
+// --- TS / TSX / JSX через scanner ---
+// CPD считает поток лексических токенов, включая keywords и punctuation.
 export function tokenizeTypeScript(
     filePath: string,
     source: string,
@@ -52,6 +51,15 @@ export function tokenizeTypeScript(
 ): RawToken[] {
     const o = { ...DEFAULTS, ...opts };
     const sf = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, scriptKind);
+    const suppressedRanges = findCpdSuppressedRanges(source);
+    const scanner = ts.createScanner(
+        ts.ScriptTarget.Latest,
+        true,
+        scriptKind === ts.ScriptKind.TSX || scriptKind === ts.ScriptKind.JSX
+            ? ts.LanguageVariant.JSX
+            : ts.LanguageVariant.Standard,
+        source
+    );
     const out: RawToken[] = [];
 
     const normalize = (kind: ts.SyntaxKind, text: string): string | null => {
@@ -67,7 +75,7 @@ export function tokenizeTypeScript(
             case ts.SyntaxKind.TemplateHead:
             case ts.SyntaxKind.TemplateMiddle:
             case ts.SyntaxKind.TemplateTail:
-                return o.ignoreLiterals ? TS_LIT : text;
+                return o.ignoreLiterals ? TS_LIT : normalizeStringContinuation(text);
             case ts.SyntaxKind.JsxText: {
                 const t = text.trim();
                 if (!t) return null; // пустой JSX-текст выкидываем
@@ -78,22 +86,89 @@ export function tokenizeTypeScript(
         }
     };
 
-    const walk = (node: ts.Node) => {
-        if (node.getChildCount(sf) === 0) {
-            // лист = терминальный токен
-            if (node.kind === ts.SyntaxKind.EndOfFileToken) return;
-            const text = node.getText(sf);
-            const image = normalize(node.kind, text);
-            if (image === null) return;
-            const { line, character } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
-            out.push({ image, line: line + 1, column: character + 1 });
-            return;
+    for (;;) {
+        const kind = scanner.scan();
+        if (kind === ts.SyntaxKind.EndOfFileToken) break;
+
+        const tokenStart = scanner.getTokenPos();
+        if (isSuppressed(tokenStart, suppressedRanges)) continue;
+
+        if (kind === ts.SyntaxKind.TemplateHead) {
+            const templateEnd = findTemplateLiteralEnd(source, tokenStart);
+            scanner.setTextPos(templateEnd);
+            const { line, character } = sf.getLineAndCharacterOfPosition(tokenStart);
+            out.push({
+                image: o.ignoreLiterals ? TS_LIT : source.slice(tokenStart, templateEnd),
+                line: line + 1,
+                column: character + 1,
+            });
+            continue;
         }
-        node.forEachChild(walk);
-    };
-    walk(sf);
+
+        const image = normalize(kind, normalizeStringContinuation(scanner.getTokenText()));
+        if (image === null) continue;
+        const { line, character } = sf.getLineAndCharacterOfPosition(tokenStart);
+        out.push({ image, line: line + 1, column: character + 1 });
+    }
 
     return out;
+}
+
+function normalizeStringContinuation(text: string): string {
+    return text.replace(/\\\r?\n\s*/g, '');
+}
+
+function findTemplateLiteralEnd(source: string, start: number): number {
+    let expressionDepth = 0;
+
+    for (let i = start + 1; i < source.length; i++) {
+        const char = source[i];
+        if (char === '\\') {
+            i++;
+            continue;
+        }
+        if (char === '`' && expressionDepth === 0) {
+            return i + 1;
+        }
+        if (char === '$' && source[i + 1] === '{') {
+            expressionDepth++;
+            i++;
+            continue;
+        }
+        if (char === '}' && expressionDepth > 0) {
+            expressionDepth--;
+        }
+    }
+
+    return source.length;
+}
+
+function isSuppressed(offset: number, ranges: { start: number; end: number }[]): boolean {
+    return ranges.some((range) => offset >= range.start && offset < range.end);
+}
+
+function findCpdSuppressedRanges(source: string): { start: number; end: number }[] {
+    const ranges: { start: number; end: number }[] = [];
+    const comments = source.matchAll(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g);
+    let start: number | null = null;
+
+    for (const comment of comments) {
+        const image = comment[0];
+        const index = comment.index;
+        if (image.includes('CPD-OFF') && start === null) {
+            start = index;
+        }
+        if (image.includes('CPD-ON') && start !== null) {
+            ranges.push({ start, end: index + image.length });
+            start = null;
+        }
+    }
+
+    if (start !== null) {
+        ranges.push({ start, end: source.length });
+    }
+
+    return ranges;
 }
 
 const TSX_EXT = new Set(['.tsx', '.jsx']);
@@ -204,24 +279,28 @@ export function tokenizeAngularHtml(
     const walk = (node: any) => {
         if (node == null) return;
 
+        const walkAll = (items: unknown[] | undefined) => {
+            for (const item of items ?? []) walk(item);
+        };
+
         // Element (есть имя тега + дети)
         if (typeof node.name === 'string' && Array.isArray(node.children)) {
             emit(`<${node.name}`, node);
-            for (const a of node.attributes ?? []) walk(a);
-            for (const a of node.inputs ?? []) walk(a);
-            for (const a of node.outputs ?? []) walk(a);
-            for (const r of node.references ?? []) walk(r);
-            for (const c of node.children) walk(c);
+            walkAll(node.attributes);
+            walkAll(node.inputs);
+            walkAll(node.outputs);
+            walkAll(node.references);
+            walkAll(node.children);
             return;
         }
         // Контейнеры: ng-template, control-flow блоки (@if/@for/@switch/@defer)
         if (Array.isArray(node.children) || Array.isArray(node.branches) || Array.isArray(node.cases)) {
             if (typeof node.tagName === 'string') emit(`<${node.tagName}`, node);
-            for (const a of node.attributes ?? []) walk(a);
-            for (const a of node.templateAttrs ?? []) walk(a);
-            for (const c of node.children ?? []) walk(c);
-            for (const b of node.branches ?? []) walk(b);
-            for (const c of node.cases ?? []) walk(c);
+            walkAll(node.attributes);
+            walkAll(node.templateAttrs);
+            walkAll(node.children);
+            walkAll(node.branches);
+            walkAll(node.cases);
             return;
         }
         // Атрибут / input / output / reference: имя структурно, значение нормализуем

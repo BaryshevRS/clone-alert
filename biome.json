@@ -9,9 +9,11 @@
     "ignoreUnknown": false,
     "includes": [
       "src/**/*.ts",
-      "test/**/*.mjs",
+      "test/**/*.ts",
+      "vitest.config.mts",
       "*.json",
       "README.md",
+      "!!test/fixtures",
       "!!**/node_modules",
       "!!**/dist",
       "!!**/*.d.ts",
@@ -83,7 +85,7 @@
   },
   "overrides": [
     {
-      "includes": ["test/**/*.mjs"],
+      "includes": ["test/**/*.ts"],
       "linter": {
         "rules": {
           "correctness": {
