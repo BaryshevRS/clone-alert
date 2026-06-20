@@ -15,6 +15,16 @@ export interface PmdFixture {
     expectedPath: string;
 }
 
+export interface PmdFixtureCase {
+    name: string;
+    sourcePath: string;
+    expectedPath: string;
+    supported: boolean;
+    reason?: string;
+}
+
+export const UNSUPPORTED_PMD_FIXTURES: Record<string, string> = {};
+
 export const PMD_JAVASCRIPT_ROOT = `${process.cwd()}/test/fixtures/pmd/pmd-javascript/src/test/resources/net/sourceforge/pmd/lang`;
 
 export function fixturesIn(directory: string, extension: '.js' | '.ts'): PmdFixture[] {
@@ -31,6 +41,32 @@ export function fixturesIn(directory: string, extension: '.js' | '.ts'): PmdFixt
             };
         })
         .filter((fixture) => fs.existsSync(fixture.expectedPath));
+}
+
+export function discoverPmdTokenFixtures(): PmdFixture[] {
+    return walk(PMD_JAVASCRIPT_ROOT)
+        .filter((file) => /\.(js|ts)$/.test(file))
+        .filter((file) => file.includes(`${path.sep}cpd${path.sep}testdata${path.sep}`))
+        .sort()
+        .map((sourcePath) => ({
+            name: path.relative(PMD_JAVASCRIPT_ROOT, sourcePath),
+            sourcePath,
+            expectedPath: sourcePath.replace(/\.(js|ts)$/, '.txt'),
+        }))
+        .filter((fixture) => fs.existsSync(fixture.expectedPath));
+}
+
+export function discoverPmdFixtureCases(): PmdFixtureCase[] {
+    return discoverPmdTokenFixtures().map((fixture) => {
+        const reason = UNSUPPORTED_PMD_FIXTURES[fixture.name];
+        return {
+            name: fixture.name,
+            sourcePath: fixture.sourcePath,
+            expectedPath: fixture.expectedPath,
+            supported: reason === undefined,
+            reason,
+        };
+    });
 }
 
 export function readPmdExpectedTokens(expectedPath: string): PmdExpectedToken[] {
@@ -63,6 +99,15 @@ export function readPmdExpectedTokens(expectedPath: string): PmdExpectedToken[] 
     }
 
     return tokens;
+}
+
+function walk(directory: string): string[] {
+    return fs
+        .readdirSync(directory, { withFileTypes: true })
+        .flatMap((entry) => {
+            const entryPath = path.join(directory, entry.name);
+            return entry.isDirectory() ? walk(entryPath) : [entryPath];
+        });
 }
 
 function unescapePmdImage(image: string): string {

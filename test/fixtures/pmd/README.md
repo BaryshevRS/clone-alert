@@ -1,7 +1,7 @@
 # PMD CPD Fixtures
 
-This directory vendors the minimal PMD CPD JavaScript/TypeScript tokenizer
-fixtures used by the Vitest compatibility suite.
+This directory vendors the PMD CPD JavaScript/TypeScript tokenizer fixtures
+used by the Vitest compatibility suite.
 
 Source repository path:
 
@@ -11,6 +11,8 @@ pmd-javascript/src/test/resources/net/sourceforge/pmd/lang/{ecmascript,typescrip
 
 The copied fixtures are from PMD and retain PMD's BSD-style license terms;
 `LICENSE` and `NOTICE` are copied from the upstream PMD checkout.
-Only the fixture subset used by `test/pmd-tokenizer-fixtures.test.ts` is copied
-here so the test suite is self-contained and does not depend on a local PMD
-checkout or git submodule.
+Fixtures are discovered from disk by `test/helpers/pmd-fixtures.ts`, so newly
+vendored `.js` and `.ts` files with matching `.txt` token dumps are covered by
+`test/pmd-tokenizer-fixtures.test.ts` automatically. Unsupported fixtures must
+be listed explicitly in `UNSUPPORTED_PMD_FIXTURES` with a concrete reason; an
+unlisted fixture is treated as supported.
