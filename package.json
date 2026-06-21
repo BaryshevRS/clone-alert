@@ -63,6 +63,22 @@
   "dependencies": {
     "typescript": "^6.0.3"
   },
+  "peerDependencies": {
+    "@angular/compiler": ">=17.0.0",
+    "@vue/compiler-sfc": ">=3.0.0",
+    "svelte": ">=3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@angular/compiler": {
+      "optional": true
+    },
+    "@vue/compiler-sfc": {
+      "optional": true
+    },
+    "svelte": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.5.0",
     "@types/node": "^24.0.0",
