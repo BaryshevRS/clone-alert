@@ -4,6 +4,65 @@ import { Cpd } from '../src/index';
 import { tokenizeTypeScript } from '../src/tokenizers';
 
 describe('JSX and TSX tokenization', () => {
+    test('uses PMD ecmascript token granularity for JS by default', () => {
+        const source = 'const copy = (value) => ({ ...value, nested: { ...value.data } });';
+        const images = tokenizeTypeScript('sample.js', source, {}, ts.ScriptKind.JS).map((token) => token.image);
+
+        expect(images).not.toContain('=>');
+        expect(images).not.toContain('...');
+        expect(images).toEqual([
+            'const',
+            'copy',
+            '=',
+            '(',
+            'value',
+            ')',
+            '=',
+            '>',
+            '(',
+            '{',
+            '.',
+            '.',
+            '.',
+            'value',
+            ',',
+            'nested',
+            ':',
+            '{',
+            '.',
+            '.',
+            '.',
+            'value',
+            '.',
+            'data',
+            '}',
+            '}',
+            ')',
+            ';',
+        ]);
+    });
+
+    test('can keep native TypeScript scanner tokens when PMD ecmascript compatibility is disabled', () => {
+        const source = 'const copy = (value) => ({ ...value });';
+        const images = tokenizeTypeScript(
+            'sample.js',
+            source,
+            { pmdEcmascriptCompatibility: false },
+            ts.ScriptKind.JS
+        ).map((token) => token.image);
+
+        expect(images).toContain('=>');
+        expect(images).toContain('...');
+    });
+
+    test('does not apply PMD ecmascript compatibility to TS tokenization', () => {
+        const source = 'const copy = (value: Data) => ({ ...value });';
+        const images = tokenizeTypeScript('sample.ts', source, {}, ts.ScriptKind.TS).map((token) => token.image);
+
+        expect(images).toContain('=>');
+        expect(images).toContain('...');
+    });
+
     test('tokenizes JSX text and expressions without dropping structural tokens', () => {
         const source = 'export const View = () => <section><h1>{title}</h1><p>Hello</p></section>;';
         const images = tokenizeTypeScript(

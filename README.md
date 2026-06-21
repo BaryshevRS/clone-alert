@@ -50,6 +50,8 @@ clone-alert [options] [<path>...]
 - `--exclude <glob[,glob...]>` - исключить файлы или директории, можно повторять.
 - `--ignore-identifiers` / `--no-ignore-identifiers` - нормализовать или сравнивать имена. По умолчанию strict, как PMD.
 - `--ignore-literals` / `--no-ignore-literals` - нормализовать или сравнивать литералы. По умолчанию strict, как PMD.
+- `--pmd-ecmascript-compatibility` / `--no-pmd-ecmascript-compatibility` -
+  раскладывать JS-токены как PMD `ecmascript`; включено по умолчанию.
 - `--angular-inline-templates` - дополнительно анализировать inline template в `@Component`.
 - `--skip-angular-inline-templates` - не анализировать inline template в `@Component`; оставлено как явный default/override.
 - `--fail-on-violation` - вернуть exit code `4`, если дубли найдены.
@@ -67,6 +69,15 @@ node dist/cli.js --format json --files src,packages --exclude '**/generated/**'
 ```text
 .ts, .tsx, .js, .jsx, .mts, .cts, .mjs, .cjs, .vue, .svelte, .html, .htm
 ```
+
+Для JS включён режим совместимости с PMD `ecmascript`: современные операторы,
+которых нет в JavaCC-грамматике PMD ES5, раскладываются в такой же поток токенов
+например `=>` как `=` и `>`, `...` как `.`, `.`, `.`. Для TS/TSX это не
+применяется, потому что PMD `typescript` использует отдельный ANTLR lexer.
+
+Важно: `--ignore-identifiers` в `clone-alert` реально нормализует JS-идентификаторы.
+В PMD `ecmascript` эта CLI-опция на текущей реализации лексера практически не
+меняет поток токенов, поэтому для строгого сравнения с PMD JS её включать не надо.
 
 Для `.vue`, `.svelte` и Angular HTML токенайзеры используют optional peer-пакеты
 `@vue/compiler-sfc`, `svelte` и `@angular/compiler`. Если пакет не установлен,

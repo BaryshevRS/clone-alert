@@ -45,6 +45,9 @@ Options:
   --no-ignore-identifiers         Compare exact identifiers. Default.
   --ignore-literals               Normalize literals.
   --no-ignore-literals            Compare exact literals. Default.
+  --pmd-ecmascript-compatibility  Tokenize JS like PMD ecmascript. Default.
+  --no-pmd-ecmascript-compatibility
+                                  Keep native TypeScript scanner JS tokens.
   --angular-inline-templates      Also scan Angular @Component inline templates.
   --skip-angular-inline-templates Do not scan inline Angular templates. Default.
   --fail-on-violation             Exit with code 4 when duplications are found.
@@ -101,6 +104,7 @@ function parseArgs(argv: string[]): CliOptions {
     let minTileSize = 50;
     let ignoreIdentifiers = false;
     let ignoreLiterals = false;
+    let pmdEcmascriptCompatibility = true;
     let angularInlineTemplates = false;
     let format: ReportFormat = 'text';
     let failOnViolation = false;
@@ -176,6 +180,14 @@ function parseArgs(argv: string[]): CliOptions {
             ignoreLiterals = false;
             continue;
         }
+        if (arg === '--pmd-ecmascript-compatibility') {
+            pmdEcmascriptCompatibility = true;
+            continue;
+        }
+        if (arg === '--no-pmd-ecmascript-compatibility') {
+            pmdEcmascriptCompatibility = false;
+            continue;
+        }
         if (arg === '--angular-inline-templates') {
             angularInlineTemplates = true;
             continue;
@@ -201,6 +213,7 @@ function parseArgs(argv: string[]): CliOptions {
         minTileSize,
         ignoreIdentifiers,
         ignoreLiterals,
+        pmdEcmascriptCompatibility,
         angularInlineTemplates,
         format,
         failOnViolation,

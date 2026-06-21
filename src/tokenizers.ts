@@ -9,11 +9,13 @@ declare const require: (name: string) => any;
 export interface TokenizeOptions {
     ignoreIdentifiers?: boolean;
     ignoreLiterals?: boolean;
+    pmdEcmascriptCompatibility?: boolean;
 }
 
 const DEFAULTS: Required<TokenizeOptions> = {
     ignoreIdentifiers: false,
     ignoreLiterals: false,
+    pmdEcmascriptCompatibility: true,
 };
 
 function optional<T = any>(name: string): T | null {
@@ -115,10 +117,75 @@ export function tokenizeTypeScript(
         if (image === null) continue;
         const { line, character } = sf.getLineAndCharacterOfPosition(tokenStart);
         const end = positionAtTokenEnd(sf, scanner.getTextPos());
-        out.push({ image, line: line + 1, column: character + 1, endLine: end.line, endColumn: end.column });
+        const token: RawToken = {
+            image,
+            line: line + 1,
+            column: character + 1,
+            endLine: end.line,
+            endColumn: end.column,
+        };
+        out.push(...expandPmdEcmascriptToken(filePath, scriptKind, token, o));
     }
 
     return out;
+}
+
+function expandPmdEcmascriptToken(
+    filePath: string,
+    scriptKind: ts.ScriptKind,
+    token: RawToken,
+    opts: Required<TokenizeOptions>
+): RawToken[] {
+    if (!opts.pmdEcmascriptCompatibility || !isEcmascriptFile(filePath, scriptKind)) {
+        return [token];
+    }
+
+    const replacement = PMD_ECMASCRIPT_TOKEN_EXPANSIONS.get(token.image);
+    if (!replacement) {
+        return [token];
+    }
+
+    return splitSingleLineToken(token, replacement);
+}
+
+function isEcmascriptFile(filePath: string, scriptKind: ts.ScriptKind): boolean {
+    const ext = pathExt(filePath);
+    if (ext === '.ts' || ext === '.tsx' || scriptKind === ts.ScriptKind.TS) {
+        return false;
+    }
+    return scriptKind === ts.ScriptKind.JS || scriptKind === ts.ScriptKind.JSX || ext === '.jsx';
+}
+
+function pathExt(filePath: string): string {
+    const dot = filePath.lastIndexOf('.');
+    return dot === -1 ? '' : filePath.slice(dot).toLowerCase();
+}
+
+const PMD_ECMASCRIPT_TOKEN_EXPANSIONS = new Map<string, string[]>([
+    ['=>', ['=', '>']],
+    ['...', ['.', '.', '.']],
+    ['?.', ['?', '.']],
+    ['??', ['?', '?']],
+    ['??=', ['?', '?', '=']],
+    ['**', ['*', '*']],
+    ['**=', ['*', '*=']],
+    ['&&=', ['&&', '=']],
+    ['||=', ['||', '=']],
+]);
+
+function splitSingleLineToken(token: RawToken, images: string[]): RawToken[] {
+    let column = token.column;
+    return images.map((image) => {
+        const part = {
+            image,
+            line: token.line,
+            column,
+            endLine: token.line,
+            endColumn: column + image.length,
+        };
+        column += image.length;
+        return part;
+    });
 }
 
 function positionAtTokenEnd(sf: ts.SourceFile, offset: number): { line: number; column: number } {

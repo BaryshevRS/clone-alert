@@ -41,6 +41,7 @@ export class Cpd {
             minTileSize: opts.minTileSize ?? 50,
             ignoreIdentifiers: opts.ignoreIdentifiers ?? false,
             ignoreLiterals: opts.ignoreLiterals ?? false,
+            pmdEcmascriptCompatibility: opts.pmdEcmascriptCompatibility ?? true,
             angularInlineTemplates: opts.angularInlineTemplates ?? false,
         };
         this.core = new CpdCore(this.opts.minTileSize);
@@ -55,6 +56,7 @@ export class Cpd {
         const tok: TokenizeOptions = {
             ignoreIdentifiers: this.opts.ignoreIdentifiers,
             ignoreLiterals: this.opts.ignoreLiterals,
+            pmdEcmascriptCompatibility: this.opts.pmdEcmascriptCompatibility,
         };
 
         if (TS_EXT.has(ext)) {
