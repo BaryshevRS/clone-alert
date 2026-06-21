@@ -63,6 +63,27 @@ describe('JSX and TSX tokenization', () => {
         expect(images).toContain('...');
     });
 
+    test('collapses regexp literals in PMD compatibility mode by default', () => {
+        const source = 'const pattern = /^foo[0-9]+$/i;';
+        const images = tokenizeTypeScript('sample.ts', source, {}, ts.ScriptKind.TS).map((token) => token.image);
+
+        expect(images).toEqual(['const', 'pattern', '=', '/^foo[0-9]+$/i', ';']);
+    });
+
+    test('keeps native scanner regexp tokens when PMD compatibility is disabled', () => {
+        const source = 'const pattern = /^foo[0-9]+$/i;';
+        const images = tokenizeTypeScript(
+            'sample.ts',
+            source,
+            { pmdEcmascriptCompatibility: false },
+            ts.ScriptKind.TS
+        ).map((token) => token.image);
+
+        expect(images).not.toContain('/^foo[0-9]+$/i');
+        expect(images).toContain('/');
+        expect(images).toContain('^');
+    });
+
     test('tokenizes JSX text and expressions without dropping structural tokens', () => {
         const source = 'export const View = () => <section><h1>{title}</h1><p>Hello</p></section>;';
         const images = tokenizeTypeScript(

@@ -66,6 +66,7 @@ export function tokenizeTypeScript(
         source
     );
     const out: RawToken[] = [];
+    let previousTokenKind: ts.SyntaxKind | null = null;
 
     const normalize = (kind: ts.SyntaxKind, text: string): string | null => {
         switch (kind) {
@@ -92,11 +93,19 @@ export function tokenizeTypeScript(
     };
 
     for (;;) {
-        const kind = scanner.scan();
+        let kind = scanner.scan();
         if (kind === ts.SyntaxKind.EndOfFileToken) break;
 
         const tokenStart = scanner.getTokenPos();
         if (isSuppressed(tokenStart, suppressedRanges)) continue;
+
+        if (
+            o.pmdEcmascriptCompatibility &&
+            kind === ts.SyntaxKind.SlashToken &&
+            canStartPmdRegexpLiteral(previousTokenKind)
+        ) {
+            kind = scanner.reScanSlashToken();
+        }
 
         if (kind === ts.SyntaxKind.TemplateHead) {
             const templateEnd = findTemplateLiteralEnd(source, tokenStart);
@@ -110,6 +119,7 @@ export function tokenizeTypeScript(
                 endLine: end.line,
                 endColumn: end.column,
             });
+            previousTokenKind = kind;
             continue;
         }
 
@@ -125,9 +135,39 @@ export function tokenizeTypeScript(
             endColumn: end.column,
         };
         out.push(...expandPmdEcmascriptToken(filePath, scriptKind, token, o));
+        previousTokenKind = kind;
     }
 
     return out;
+}
+
+function canStartPmdRegexpLiteral(previousKind: ts.SyntaxKind | null): boolean {
+    if (previousKind === null) {
+        return true;
+    }
+
+    switch (previousKind) {
+        case ts.SyntaxKind.Identifier:
+        case ts.SyntaxKind.PrivateIdentifier:
+        case ts.SyntaxKind.StringLiteral:
+        case ts.SyntaxKind.NumericLiteral:
+        case ts.SyntaxKind.BigIntLiteral:
+        case ts.SyntaxKind.NoSubstitutionTemplateLiteral:
+        case ts.SyntaxKind.RegularExpressionLiteral:
+        case ts.SyntaxKind.ThisKeyword:
+        case ts.SyntaxKind.SuperKeyword:
+        case ts.SyntaxKind.TrueKeyword:
+        case ts.SyntaxKind.FalseKeyword:
+        case ts.SyntaxKind.NullKeyword:
+        case ts.SyntaxKind.CloseParenToken:
+        case ts.SyntaxKind.CloseBracketToken:
+        case ts.SyntaxKind.CloseBraceToken:
+        case ts.SyntaxKind.PlusPlusToken:
+        case ts.SyntaxKind.MinusMinusToken:
+            return false;
+        default:
+            return true;
+    }
 }
 
 function expandPmdEcmascriptToken(

@@ -45,9 +45,9 @@ Options:
   --no-ignore-identifiers         Compare exact identifiers. Default.
   --ignore-literals               Normalize literals.
   --no-ignore-literals            Compare exact literals. Default.
-  --pmd-ecmascript-compatibility  Tokenize JS like PMD ecmascript. Default.
+  --pmd-ecmascript-compatibility  Use PMD-compatible token granularity. Default.
   --no-pmd-ecmascript-compatibility
-                                  Keep native TypeScript scanner JS tokens.
+                                  Keep native TypeScript scanner tokens.
   --angular-inline-templates      Also scan Angular @Component inline templates.
   --skip-angular-inline-templates Do not scan inline Angular templates. Default.
   --fail-on-violation             Exit with code 4 when duplications are found.
