@@ -43,6 +43,10 @@ export class Mark {
 export class Match {
     // Дедуп по индексу токена (PMD использует TreeSet по index, а не по ссылке).
     private markMap = new Map<number, Mark>();
+    // Кэш отсортированных марок. Геттер marks дёргается в горячем reportMatch
+    // миллионы раз; без кэша каждый вызов делал Array.from + sort. Инвалидируется
+    // только в addMark, т.е. когда состав марок реально меняется.
+    private marksSorted: Mark[] | null = null;
 
     constructor(
         public tokenCount: number,
@@ -56,6 +60,7 @@ export class Match {
     addMark(entry: TokenEntry) {
         if (!this.markMap.has(entry.index)) {
             this.markMap.set(entry.index, new Mark(entry));
+            this.marksSorted = null;
         }
     }
 
@@ -64,7 +69,10 @@ export class Match {
     }
 
     get marks(): Mark[] {
-        return Array.from(this.markMap.values()).sort((a, b) => a.token.index - b.token.index);
+        if (this.marksSorted === null) {
+            this.marksSorted = Array.from(this.markMap.values()).sort((a, b) => a.token.index - b.token.index);
+        }
+        return this.marksSorted;
     }
 }
 
