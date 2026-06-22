@@ -51,6 +51,10 @@ function main(argv) {
     const jscpdOutDir = path.join(options.outDir, 'jscpd');
     mkdirSync(jscpdOutDir, { recursive: true });
 
+    const ignoreFlags = [];
+    if (options.ignoreIdentifiers) ignoreFlags.push('--ignore-identifiers');
+    if (options.ignoreLiterals) ignoreFlags.push('--ignore-literals');
+
     const performance = {};
     performance.pmd = runMeasured(
         'pmd',
@@ -69,6 +73,7 @@ function main(argv) {
             '**/dist/**',
             '--exclude',
             '**/.git/**',
+            ...ignoreFlags,
             '--format',
             'xml',
             '--report-file',
@@ -95,6 +100,7 @@ function main(argv) {
             '**/dist/**',
             '--exclude',
             '**/.git/**',
+            ...ignoreFlags,
             '--format',
             'xml',
         ],
@@ -167,6 +173,8 @@ function parseArgs(argv) {
         outDir: '',
         pmd: 'pmd',
         jscpd: 'jscpd',
+        ignoreIdentifiers: false,
+        ignoreLiterals: false,
         help: false,
     };
 
@@ -210,6 +218,14 @@ function parseArgs(argv) {
         }
         if (arg === '--jscpd') {
             options.jscpd = requireValue(argv, ++index, arg);
+            continue;
+        }
+        if (arg === '--ignore-identifiers') {
+            options.ignoreIdentifiers = true;
+            continue;
+        }
+        if (arg === '--ignore-literals') {
+            options.ignoreLiterals = true;
             continue;
         }
         if (arg.startsWith('-')) {
