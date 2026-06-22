@@ -56,7 +56,10 @@ export function tokenizeTypeScript(
     scriptKind: ts.ScriptKind = ts.ScriptKind.TS
 ): RawToken[] {
     const o = { ...DEFAULTS, ...opts };
-    const sf = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, scriptKind);
+    // Раньше тут был полный ts.createSourceFile (парс в AST) только ради маппинга
+    // позиций. AST не нужен — берём ту же line-map, что TS строит под капотом
+    // getLineAndCharacterOfPosition, без парсинга. См. createLineMap.
+    const sf = createLineMap(source);
     const suppressedRanges = findCpdSuppressedRanges(source);
     const scanner = ts.createScanner(
         ts.ScriptTarget.Latest,
@@ -237,7 +240,34 @@ function pathExt(filePath: string): string {
     return dot === -1 ? '' : filePath.slice(dot).toLowerCase();
 }
 
-function positionAtTokenEnd(sf: ts.SourceFile, offset: number): { line: number; column: number } {
+// Маппинг offset -> {line, character}, идентичный sf.getLineAndCharacterOfPosition,
+// но без парса AST: TS под капотом делает computeLineAndCharacterOfPosition(
+// computeLineStarts(text), pos). Эти функции экспортируются в рантайме (но нет в
+// публичных типах), поэтому зовём через узкий каст; на старых сборках TS, где их
+// нет, откатываемся на полноценный SourceFile.
+interface LineMap {
+    getLineAndCharacterOfPosition(pos: number): { line: number; character: number };
+}
+
+function createLineMap(source: string): LineMap {
+    const api = ts as unknown as {
+        computeLineStarts?: (text: string) => readonly number[];
+        computeLineAndCharacterOfPosition?: (
+            lineStarts: readonly number[],
+            position: number
+        ) => { line: number; character: number };
+    };
+    const compute = api.computeLineStarts;
+    const lineAndChar = api.computeLineAndCharacterOfPosition;
+    if (compute && lineAndChar) {
+        const lineStarts = compute(source);
+        return { getLineAndCharacterOfPosition: (pos) => lineAndChar(lineStarts, pos) };
+    }
+    const sf = ts.createSourceFile('_.ts', source, ts.ScriptTarget.Latest, false);
+    return { getLineAndCharacterOfPosition: (pos) => sf.getLineAndCharacterOfPosition(pos) };
+}
+
+function positionAtTokenEnd(sf: LineMap, offset: number): { line: number; column: number } {
     const { line, character } = sf.getLineAndCharacterOfPosition(offset);
     return { line: line + 1, column: character + 1 };
 }
@@ -285,7 +315,7 @@ function isTemplatePart(kind: ts.SyntaxKind): boolean {
 // строк) — по одному токену на символ (grammar: TemplateStringAtom: ~[`\\]).
 function expandTemplateSpan(
     source: string,
-    sf: ts.SourceFile,
+    sf: LineMap,
     start: number,
     end: number,
     opts: Required<TokenizeOptions>
