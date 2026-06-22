@@ -4,7 +4,10 @@ import { NG_INTERP, NG_TEXT, type RawToken, TS_ID, TS_LIT } from './core';
 
 // ESM-пользователям: заменить require на createRequire(import.meta.url)
 // или сделать функции async с dynamic import.
-declare const require: (name: string) => any;
+declare const require: {
+    (name: string): any;
+    resolve: (name: string, options?: { paths?: string[] }) => string;
+};
 
 export interface TokenizeOptions {
     ignoreIdentifiers?: boolean;
@@ -19,12 +22,32 @@ const DEFAULTS: Required<TokenizeOptions> = {
     pmdTypescriptCompatibility: true,
 };
 
-function optional<T = any>(name: string): T | null {
+// Опциональный компилятор (@angular/compiler, @vue/compiler-sfc, svelte) —
+// peerDependency. Резолвим СНАЧАЛА от анализируемого файла вверх по дереву
+// (берём компилятор той версии, что стоит в сканируемом проекте), и лишь
+// потом падаем на собственные node_modules clone-alert. fromPaths обычно =
+// [dirname(filePath)] — Node поднимается по node_modules от этой точки.
+function optional<T = any>(name: string, fromPaths?: string[]): T | null {
     try {
-        return require(name);
+        const id = require.resolve(name, fromPaths && fromPaths.length ? { paths: fromPaths } : undefined);
+        return require(id);
     } catch {
+        if (fromPaths && fromPaths.length) {
+            try {
+                return require(name);
+            } catch {
+                return null;
+            }
+        }
         return null;
     }
+}
+
+// Стартовая точка для резолва peer-компилятора: каталог анализируемого файла.
+// Node сам пройдёт node_modules вверх до корня проекта.
+function moduleResolveDirs(filePath: string): string[] {
+    const slash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+    return slash > 0 ? [filePath.slice(0, slash)] : [];
 }
 
 let warnedVue = false;
@@ -384,7 +407,7 @@ export function scriptKindFor(ext: string): ts.ScriptKind {
 
 // --- Vue SFC ---
 export function tokenizeVue(filePath: string, source: string, opts: TokenizeOptions = {}): RawToken[] {
-    const sfc = optional('@vue/compiler-sfc');
+    const sfc = optional('@vue/compiler-sfc', moduleResolveDirs(filePath));
     if (!sfc) {
         if (!warnedVue) {
             console.warn('[cpd] .vue пропущен: установите @vue/compiler-sfc');
@@ -412,7 +435,7 @@ export function tokenizeVue(filePath: string, source: string, opts: TokenizeOpti
 
 // --- Svelte ---
 export function tokenizeSvelte(filePath: string, source: string, opts: TokenizeOptions = {}): RawToken[] {
-    const svelte = optional('svelte/compiler');
+    const svelte = optional('svelte/compiler', moduleResolveDirs(filePath));
     if (!svelte) {
         if (!warnedSvelte) {
             console.warn('[cpd] .svelte пропущен: установите svelte');
@@ -456,7 +479,7 @@ export function tokenizeAngularHtml(
     template: string,
     base: { line: number; col: number } = { line: 1, col: 1 }
 ): RawToken[] {
-    const ngc = optional('@angular/compiler');
+    const ngc = optional('@angular/compiler', moduleResolveDirs(filePath));
     if (!ngc || typeof ngc.parseTemplate !== 'function') {
         if (!warnedNg) {
             console.warn('[cpd] Angular-шаблон пропущен: установите @angular/compiler');
