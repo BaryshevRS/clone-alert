@@ -50,8 +50,10 @@ clone-alert [options] [<path>...]
 - `--exclude <glob[,glob...]>` - исключить файлы или директории, можно повторять.
 - `--ignore-identifiers` / `--no-ignore-identifiers` - нормализовать или сравнивать имена. По умолчанию strict, как PMD.
 - `--ignore-literals` / `--no-ignore-literals` - нормализовать или сравнивать литералы. По умолчанию strict, как PMD.
-- `--pmd-ecmascript-compatibility` / `--no-pmd-ecmascript-compatibility` -
-  раскладывать JS-токены как PMD `ecmascript`; включено по умолчанию.
+- `--pmd-typescript-compatibility` / `--no-pmd-typescript-compatibility` -
+  для `.ts/.tsx` раскладывать токены как PMD `typescript` (дробить шаблонные
+  литералы на атомы `` ` `` / `${` / `}` / по символу, схлопывать regexp);
+  включено по умолчанию. `.js/.jsx` всегда токенизируются нативным сканером.
 - `--angular-inline-templates` - дополнительно анализировать inline template в `@Component`.
 - `--skip-angular-inline-templates` - не анализировать inline template в `@Component`; оставлено как явный default/override.
 - `--fail-on-violation` - вернуть exit code `4`, если дубли найдены.

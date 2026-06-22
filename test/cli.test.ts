@@ -64,7 +64,7 @@ test('uses PMD-like strict comparison by default and enables normalization by fl
     expect(normalized.stdout).toMatch(/Found a \d+ token \(2 occurrences\) duplication:/);
 });
 
-test('uses PMD ecmascript token granularity for JavaScript by default', async () => {
+test('tokenizes JavaScript natively regardless of the PMD typescript flag', async () => {
     const fixture = path.join(tmpdir(), `clone-alert-pmd-js-${process.pid}-${Date.now()}`);
     await mkdir(fixture, { recursive: true });
     const repeated = 'const copy = (value) => ({ ...value, nested: { ...value.data } });';
@@ -75,25 +75,26 @@ test('uses PMD ecmascript token granularity for JavaScript by default', async ()
     const detected = await execFileAsync(process.execPath, [
         cli,
         '--minimum-tokens',
-        '25',
+        '20',
         '--files',
         fixture,
         '--extensions',
         'js',
     ]);
-    const native = await execFileAsync(process.execPath, [
+    const flagged = await execFileAsync(process.execPath, [
         cli,
         '--minimum-tokens',
-        '25',
+        '20',
         '--files',
         fixture,
         '--extensions',
         'js',
-        '--no-pmd-ecmascript-compatibility',
+        '--no-pmd-typescript-compatibility',
     ]);
 
-    expect(detected.stdout).toMatch(/Found a 28 token \(2 occurrences\) duplication:/);
-    expect(native.stdout).toBe('');
+    // PMD typescript compatibility is .ts-only: => and ... stay single native tokens.
+    expect(detected.stdout).toMatch(/Found a 23 token \(2 occurrences\) duplication:/);
+    expect(flagged.stdout).toBe(detected.stdout);
 });
 
 test('does not scan Angular inline templates by default', async () => {

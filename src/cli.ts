@@ -45,9 +45,13 @@ Options:
   --no-ignore-identifiers         Compare exact identifiers. Default.
   --ignore-literals               Normalize literals.
   --no-ignore-literals            Compare exact literals. Default.
-  --pmd-ecmascript-compatibility  Use PMD-compatible token granularity. Default.
-  --no-pmd-ecmascript-compatibility
-                                  Keep native TypeScript scanner tokens.
+  --pmd-typescript-compatibility  Match PMD typescript granularity for .ts/.tsx:
+                                  split template literals into per-atom tokens
+                                  (backtick, \${, }, one per text char) and
+                                  collapse regexp. .js/.jsx stay native. Default.
+  --no-pmd-typescript-compatibility
+                                  Tokenize .ts/.tsx with the native TypeScript
+                                  scanner (a template literal stays one token).
   --angular-inline-templates      Also scan Angular @Component inline templates.
   --skip-angular-inline-templates Do not scan inline Angular templates. Default.
   --fail-on-violation             Exit with code 4 when duplications are found.
@@ -104,7 +108,7 @@ function parseArgs(argv: string[]): CliOptions {
     let minTileSize = 50;
     let ignoreIdentifiers = false;
     let ignoreLiterals = false;
-    let pmdEcmascriptCompatibility = true;
+    let pmdTypescriptCompatibility = true;
     let angularInlineTemplates = false;
     let format: ReportFormat = 'text';
     let failOnViolation = false;
@@ -180,12 +184,12 @@ function parseArgs(argv: string[]): CliOptions {
             ignoreLiterals = false;
             continue;
         }
-        if (arg === '--pmd-ecmascript-compatibility') {
-            pmdEcmascriptCompatibility = true;
+        if (arg === '--pmd-typescript-compatibility') {
+            pmdTypescriptCompatibility = true;
             continue;
         }
-        if (arg === '--no-pmd-ecmascript-compatibility') {
-            pmdEcmascriptCompatibility = false;
+        if (arg === '--no-pmd-typescript-compatibility') {
+            pmdTypescriptCompatibility = false;
             continue;
         }
         if (arg === '--angular-inline-templates') {
@@ -213,7 +217,7 @@ function parseArgs(argv: string[]): CliOptions {
         minTileSize,
         ignoreIdentifiers,
         ignoreLiterals,
-        pmdEcmascriptCompatibility,
+        pmdTypescriptCompatibility,
         angularInlineTemplates,
         format,
         failOnViolation,

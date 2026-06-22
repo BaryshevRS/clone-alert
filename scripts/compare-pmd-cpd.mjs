@@ -10,11 +10,17 @@ const HELP = `Usage: npm run compare:pmd -- <path> [options]
 
 Compare PMD CPD and clone-alert on the same source tree.
 
+PMD CPD parses a single language per run, so all three tools are kept on the
+same pure file set: extensions/formats default from --language, and any
+non-parseable extensions (tsx, jsx, vue, ...) are dropped for a fair compare.
+
 Options:
   --minimum-tokens <n>        Minimum duplicated token span. Default: 50.
-  --extensions <ext[,ext...]> Extensions for clone-alert scan. Default: ts.
+  --extensions <ext[,ext...]> Extensions for clone-alert scan. Default: derived
+                              from --language (ts for typescript, js for
+                              ecmascript). Non-parseable extensions are dropped.
   --language <name>           PMD CPD language. Default: typescript.
-  --jscpd-formats <names>      jscpd formats. Default: typescript.
+  --jscpd-formats <names>      jscpd formats. Default: derived from --language.
   --repo-name <name>           Repository label; stores reports under bench/results/<name>/<timestamp>.
   --bench-dir <path>           Benchmark root used with --repo-name. Default: bench.
   --out-dir <path>             Directory for reports. Default: OS temp dir, or bench/results/<repo>/<timestamp>.
@@ -140,13 +146,22 @@ function main(argv) {
     return 0;
 }
 
+// PMD CPD runs one --language per pass. Each profile pins the matching pure
+// file extension for clone-alert and the jscpd format so all three tools scan
+// an identical corpus. Framework variants (.tsx/.jsx/...) are out of scope:
+// PMD's typescript/ecmascript lexers cannot parse them.
+const LANGUAGE_PROFILES = {
+    typescript: { extensions: 'ts', jscpdFormats: 'typescript', pure: ['ts'] },
+    ecmascript: { extensions: 'js', jscpdFormats: 'javascript', pure: ['js'] },
+};
+
 function parseArgs(argv) {
     const options = {
         inputPath: '',
         minimumTokens: 50,
-        extensions: 'ts',
+        extensions: '',
         language: 'typescript',
-        jscpdFormats: 'typescript',
+        jscpdFormats: '',
         repoName: '',
         benchDir: path.resolve('bench'),
         outDir: '',
@@ -203,6 +218,17 @@ function parseArgs(argv) {
         options.inputPath = path.resolve(arg);
     }
 
+    const profile = LANGUAGE_PROFILES[options.language];
+    if (!options.extensions) {
+        options.extensions = profile ? profile.extensions : 'ts';
+    }
+    if (!options.jscpdFormats) {
+        options.jscpdFormats = profile ? profile.jscpdFormats : 'typescript';
+    }
+    if (profile) {
+        options.extensions = keepPureExtensions(options.extensions, profile.pure, options.language);
+    }
+
     if (!options.outDir) {
         options.outDir = options.repoName
             ? path.join(options.benchDir, 'results', options.repoName, timestampForPath())
@@ -210,6 +236,26 @@ function parseArgs(argv) {
     }
 
     return options;
+}
+
+// Keep only the extensions PMD's chosen language can actually lex, so PMD,
+// clone-alert and jscpd compare the exact same files. Dropped extensions are
+// reported to stderr; falls back to the language's pure set if nothing is left.
+function keepPureExtensions(extensions, pure, language) {
+    const wanted = extensions
+        .split(',')
+        .map((ext) => ext.trim().replace(/^\./, ''))
+        .filter(Boolean);
+    const kept = wanted.filter((ext) => pure.includes(ext));
+    const dropped = wanted.filter((ext) => !pure.includes(ext));
+    if (dropped.length > 0) {
+        const droppedList = dropped.map((ext) => `.${ext}`).join(', ');
+        const pureList = pure.map((ext) => `.${ext}`).join(', ');
+        process.stderr.write(
+            `compare-pmd-cpd: PMD --language ${language} cannot parse ${droppedList}; comparing pure ${pureList} only\n`
+        );
+    }
+    return (kept.length > 0 ? kept : pure).join(',');
 }
 
 function sanitizeRepoName(value) {

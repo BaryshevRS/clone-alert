@@ -9,13 +9,14 @@ declare const require: (name: string) => any;
 export interface TokenizeOptions {
     ignoreIdentifiers?: boolean;
     ignoreLiterals?: boolean;
-    pmdEcmascriptCompatibility?: boolean;
+    /** Дробить токены TS-файлов под PMD typescript (шаблоны, regexp). Только .ts/.tsx. */
+    pmdTypescriptCompatibility?: boolean;
 }
 
 const DEFAULTS: Required<TokenizeOptions> = {
     ignoreIdentifiers: false,
     ignoreLiterals: false,
-    pmdEcmascriptCompatibility: true,
+    pmdTypescriptCompatibility: true,
 };
 
 function optional<T = any>(name: string): T | null {
@@ -92,22 +93,73 @@ export function tokenizeTypeScript(
         }
     };
 
+    // Режим совместимости с PMD typescript включается только для TS-файлов.
+    // .ts/.tsx (флаг ВКЛ): шаблон дробится на PMD-typescript-атомы (backtick /
+    // ${ / } / по символу текста — grammar TypeScriptLexer.g4 TemplateStringAtom:
+    // ~[`\\]) и схлопывается regexp. .js/.jsx или флаг ВЫКЛ — нативный сканер
+    // (шаблон = один токен, никакого pmd-причёсывания).
+    const pmdTypeScript = o.pmdTypescriptCompatibility && isTypeScriptFile(filePath, scriptKind);
+    const splitTemplates = pmdTypeScript;
+    // Глубина фигурных скобок внутри каждой активной интерполяции ${…}. На нуле
+    // очередная `}` закрывает интерполяцию -> пересканируем в TemplateMiddle/Tail.
+    const templateBraceDepth: number[] = [];
+    const bumpTemplateDepth = (kind: ts.SyntaxKind) => {
+        if (!splitTemplates) return;
+        const top = templateBraceDepth.length - 1;
+        switch (kind) {
+            case ts.SyntaxKind.TemplateHead:
+                templateBraceDepth.push(0);
+                break;
+            case ts.SyntaxKind.TemplateTail:
+                templateBraceDepth.pop();
+                break;
+            case ts.SyntaxKind.OpenBraceToken:
+                if (top >= 0) templateBraceDepth[top]++;
+                break;
+            case ts.SyntaxKind.CloseBraceToken:
+                if (top >= 0) templateBraceDepth[top]--;
+                break;
+            default:
+                break;
+        }
+    };
+
     for (;;) {
         let kind = scanner.scan();
         if (kind === ts.SyntaxKind.EndOfFileToken) break;
 
-        const tokenStart = scanner.getTokenPos();
-        if (isSuppressed(tokenStart, suppressedRanges)) continue;
-
+        // Закрывающая `}` интерполяции: пересканируем её как продолжение шаблона.
         if (
-            o.pmdEcmascriptCompatibility &&
-            kind === ts.SyntaxKind.SlashToken &&
-            canStartPmdRegexpLiteral(previousTokenKind)
+            splitTemplates &&
+            kind === ts.SyntaxKind.CloseBraceToken &&
+            templateBraceDepth.length > 0 &&
+            templateBraceDepth[templateBraceDepth.length - 1] === 0
         ) {
+            kind = scanner.reScanTemplateToken(false);
+        }
+
+        const tokenStart = scanner.getTokenPos();
+        if (isSuppressed(tokenStart, suppressedRanges)) {
+            bumpTemplateDepth(kind); // держим стек в синхроне сквозь CPD-OFF
+            continue;
+        }
+
+        if (pmdTypeScript && kind === ts.SyntaxKind.SlashToken && canStartPmdRegexpLiteral(previousTokenKind)) {
             kind = scanner.reScanSlashToken();
         }
 
-        if (kind === ts.SyntaxKind.TemplateHead) {
+        // typescript-режим: дробим часть шаблона на атомы PMD.
+        if (splitTemplates && isTemplatePart(kind)) {
+            bumpTemplateDepth(kind);
+            for (const atom of expandTemplateSpan(source, sf, tokenStart, scanner.getTextPos(), o)) {
+                out.push(atom);
+            }
+            previousTokenKind = kind;
+            continue;
+        }
+
+        // нативный режим: весь шаблон с подстановками = один токен.
+        if (!splitTemplates && kind === ts.SyntaxKind.TemplateHead) {
             const templateEnd = findTemplateLiteralEnd(source, tokenStart);
             scanner.setTextPos(templateEnd);
             const { line, character } = sf.getLineAndCharacterOfPosition(tokenStart);
@@ -123,18 +175,19 @@ export function tokenizeTypeScript(
             continue;
         }
 
+        bumpTemplateDepth(kind); // баланс { } внутри интерполяции
+
         const image = normalize(kind, normalizeStringContinuation(scanner.getTokenText()));
         if (image === null) continue;
         const { line, character } = sf.getLineAndCharacterOfPosition(tokenStart);
         const end = positionAtTokenEnd(sf, scanner.getTextPos());
-        const token: RawToken = {
+        out.push({
             image,
             line: line + 1,
             column: character + 1,
             endLine: end.line,
             endColumn: end.column,
-        };
-        out.push(...expandPmdEcmascriptToken(filePath, scriptKind, token, o));
+        });
         previousTokenKind = kind;
     }
 
@@ -170,62 +223,18 @@ function canStartPmdRegexpLiteral(previousKind: ts.SyntaxKind | null): boolean {
     }
 }
 
-function expandPmdEcmascriptToken(
-    filePath: string,
-    scriptKind: ts.ScriptKind,
-    token: RawToken,
-    opts: Required<TokenizeOptions>
-): RawToken[] {
-    if (!opts.pmdEcmascriptCompatibility || !isEcmascriptFile(filePath, scriptKind)) {
-        return [token];
-    }
-
-    const replacement = PMD_ECMASCRIPT_TOKEN_EXPANSIONS.get(token.image);
-    if (!replacement) {
-        return [token];
-    }
-
-    return splitSingleLineToken(token, replacement);
-}
-
-function isEcmascriptFile(filePath: string, scriptKind: ts.ScriptKind): boolean {
+// PMD typescript-совместимость применяется только к TS-файлам; .js/.jsx идут
+// нативным сканером без pmd-причёсывания.
+function isTypeScriptFile(filePath: string, scriptKind: ts.ScriptKind): boolean {
     const ext = pathExt(filePath);
-    if (ext === '.ts' || ext === '.tsx' || scriptKind === ts.ScriptKind.TS) {
-        return false;
-    }
-    return scriptKind === ts.ScriptKind.JS || scriptKind === ts.ScriptKind.JSX || ext === '.jsx';
+    if (ext === '.ts' || ext === '.tsx' || ext === '.mts' || ext === '.cts') return true;
+    if (ext === '.js' || ext === '.jsx' || ext === '.mjs' || ext === '.cjs') return false;
+    return scriptKind === ts.ScriptKind.TS || scriptKind === ts.ScriptKind.TSX;
 }
 
 function pathExt(filePath: string): string {
     const dot = filePath.lastIndexOf('.');
     return dot === -1 ? '' : filePath.slice(dot).toLowerCase();
-}
-
-const PMD_ECMASCRIPT_TOKEN_EXPANSIONS = new Map<string, string[]>([
-    ['=>', ['=', '>']],
-    ['...', ['.', '.', '.']],
-    ['?.', ['?', '.']],
-    ['??', ['?', '?']],
-    ['??=', ['?', '?', '=']],
-    ['**', ['*', '*']],
-    ['**=', ['*', '*=']],
-    ['&&=', ['&&', '=']],
-    ['||=', ['||', '=']],
-]);
-
-function splitSingleLineToken(token: RawToken, images: string[]): RawToken[] {
-    let column = token.column;
-    return images.map((image) => {
-        const part = {
-            image,
-            line: token.line,
-            column,
-            endLine: token.line,
-            endColumn: column + image.length,
-        };
-        column += image.length;
-        return part;
-    });
 }
 
 function positionAtTokenEnd(sf: ts.SourceFile, offset: number): { line: number; column: number } {
@@ -260,6 +269,51 @@ function findTemplateLiteralEnd(source: string, start: number): number {
     }
 
     return source.length;
+}
+
+function isTemplatePart(kind: ts.SyntaxKind): boolean {
+    return (
+        kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral ||
+        kind === ts.SyntaxKind.TemplateHead ||
+        kind === ts.SyntaxKind.TemplateMiddle ||
+        kind === ts.SyntaxKind.TemplateTail
+    );
+}
+
+// Дробление куска шаблонного литерала на атомы PMD-typescript: backtick, `${`,
+// `}`, escape `\X` — по одному токену; всё остальное (текст, пробелы, переводы
+// строк) — по одному токену на символ (grammar: TemplateStringAtom: ~[`\\]).
+function expandTemplateSpan(
+    source: string,
+    sf: ts.SourceFile,
+    start: number,
+    end: number,
+    opts: Required<TokenizeOptions>
+): RawToken[] {
+    const atoms: RawToken[] = [];
+    let i = start;
+    while (i < end) {
+        let len = 1;
+        const char = source[i];
+        if (char === '\\' && i + 1 < end) {
+            len = 2; // escape-атом
+        } else if (char === '$' && source[i + 1] === '{') {
+            len = 2; // начало интерполяции
+        }
+        const raw = source.slice(i, i + len);
+        const structural = raw === '`' || raw === '${' || raw === '}';
+        const s = sf.getLineAndCharacterOfPosition(i);
+        const e = sf.getLineAndCharacterOfPosition(i + len);
+        atoms.push({
+            image: !structural && opts.ignoreLiterals ? TS_LIT : raw,
+            line: s.line + 1,
+            column: s.character + 1,
+            endLine: e.line + 1,
+            endColumn: e.character + 1,
+        });
+        i += len;
+    }
+    return atoms;
 }
 
 function isSuppressed(offset: number, ranges: { start: number; end: number }[]): boolean {

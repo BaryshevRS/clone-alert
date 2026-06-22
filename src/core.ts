@@ -350,14 +350,22 @@ class MatchCollector {
                     for (const other of m.marks) {
                         this.registerTokenMatch(other.token.index, mark2);
                     }
-                    m.addMark(this.ma.entryAt(mark2)!);
+                    m.addMark(this.entry(mark2));
                     return;
                 }
             }
         }
 
-        matches.push(new Match(dupes, new Mark(this.ma.entryAt(mark1)!), new Mark(this.ma.entryAt(mark2)!)));
+        matches.push(new Match(dupes, new Mark(this.entry(mark1)), new Mark(this.entry(mark2))));
         this.registerTokenMatch(mark1, mark2);
+    }
+
+    // Материализация TokenEntry для марки. Индекс гарантированно в диапазоне
+    // (марки приходят из потока токенов), поэтому undefined здесь невозможен.
+    private entry(index: number): TokenEntry {
+        const entry = this.ma.entryAt(index);
+        if (!entry) throw new Error(`token index out of range: ${index}`);
+        return entry;
     }
 
     private registerTokenMatch(mark1: number, mark2: number) {
