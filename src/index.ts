@@ -106,7 +106,7 @@ export class Cpd {
 
     public locationForMark(mark: Mark, tokenCount: number): MatchLocation {
         const start = mark.token;
-        const end = this.core.tokens[start.index + tokenCount - 1] ?? start;
+        const end = this.core.entryAt(start.index + tokenCount - 1) ?? start;
         return {
             path: start.file,
             startLine: start.beginLine,
