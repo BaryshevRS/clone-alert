@@ -181,13 +181,16 @@ export class CpdCore {
         if (this.size < this.minTileSize) return [];
 
         const { markIndices, markHashes, markCount } = this.hash();
+        if (markCount === 0) return [];
 
-        // Группировка по значению хеша через сортировку перестановки (hash, index).
-        // Заменяет Map<hash, TokenEntry[]>: вместо миллионов мелких массивов —
-        // две Int32Array-колонки и один проход по отсортированным прогонам.
-        const order = new Array<number>(markCount);
-        for (let i = 0; i < markCount; i++) order[i] = i;
-        order.sort((a, b) => markHashes[a] - markHashes[b] || markIndices[a] - markIndices[b]);
+        // Группировка по равному хешу. Раньше — comparator-сортировка boxed number[],
+        // самый дорогой кусок ядра (O(n log n) с мегаморфным замыканием на 3.4M).
+        // Теперь — стабильный LSD radix sort по 32-битному хешу на Uint32Array:
+        // O(n) линейных проходов, без замыканий и boxing. markIndices строго
+        // убывает (hash() идёт справа налево), поэтому стартовая перестановка по
+        // возрастанию index — это разворот; стабильность radix сохраняет
+        // возрастание index внутри равного хеша (требование MatchCollector.collect).
+        const order = radixSortByHash(markHashes, markCount);
 
         const collector = new MatchCollector(this, this.minTileSize);
         let start = 0;
@@ -268,6 +271,38 @@ function growInt32(src: Int32Array, capacity: number): Int32Array<ArrayBuffer> {
     const dst = new Int32Array(capacity);
     dst.set(src);
     return dst;
+}
+
+// Стабильный LSD radix sort перестановки [0..count) по ключу markHashes[pos].
+// Порядок — по ВОЗРАСТАНИЮ знакового хеша; при равном хеше стабильность
+// сохраняет порядок стартовой перестановки. Стартуем с позиций по убыванию
+// (count-1..0): т.к. markHashes/markIndices идут по убыванию token-index,
+// это даёт возрастание index внутри каждой группы равного хеша.
+// 4 прохода по байту вместо O(n log n) comparator на boxed number[].
+function radixSortByHash(markHashes: Int32Array, count: number): Uint32Array {
+    // Знаковый int32 -> монотонный uint32 (флип старшего бита), чтобы
+    // байтовый radix давал корректный знаковый порядок.
+    const keys = new Uint32Array(count);
+    for (let i = 0; i < count; i++) keys[i] = (markHashes[i] ^ 0x80000000) >>> 0;
+
+    let src = new Uint32Array(count);
+    for (let i = 0; i < count; i++) src[i] = count - 1 - i;
+    let dst = new Uint32Array(count);
+    const counts = new Int32Array(257);
+
+    for (let shift = 0; shift < 32; shift += 8) {
+        counts.fill(0);
+        for (let i = 0; i < count; i++) counts[((keys[src[i]] >>> shift) & 0xff) + 1]++;
+        for (let b = 0; b < 256; b++) counts[b + 1] += counts[b];
+        for (let i = 0; i < count; i++) {
+            const p = src[i];
+            dst[counts[(keys[p] >>> shift) & 0xff]++] = p;
+        }
+        const tmp = src;
+        src = dst;
+        dst = tmp;
+    }
+    return src;
 }
 
 // Перенос MatchCollector.java без изменений в алгоритме (он корректен).
