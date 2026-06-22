@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const HELP = `Usage: npm run compare:pmd -- <path> [options]
 
@@ -13,8 +14,12 @@ Options:
   --minimum-tokens <n>        Minimum duplicated token span. Default: 50.
   --extensions <ext[,ext...]> Extensions for clone-alert scan. Default: ts.
   --language <name>           PMD CPD language. Default: typescript.
-  --out-dir <path>            Directory for XML reports. Default: OS temp dir.
+  --jscpd-formats <names>      jscpd formats. Default: typescript.
+  --repo-name <name>           Repository label; stores reports under bench/results/<name>/<timestamp>.
+  --bench-dir <path>           Benchmark root used with --repo-name. Default: bench.
+  --out-dir <path>             Directory for reports. Default: OS temp dir, or bench/results/<repo>/<timestamp>.
   --pmd <command>             PMD executable. Default: pmd.
+  --jscpd <command>           jscpd v5/Rust executable. Default: jscpd from PATH.
   -h, --help                  Show this help.
 `;
 
@@ -37,8 +42,12 @@ function main(argv) {
     mkdirSync(options.outDir, { recursive: true });
     const pmdReport = path.join(options.outDir, 'pmd-cpd.xml');
     const cloneReport = path.join(options.outDir, 'clone-alert.xml');
+    const jscpdOutDir = path.join(options.outDir, 'jscpd');
+    mkdirSync(jscpdOutDir, { recursive: true });
 
-    execFileSync(
+    const performance = {};
+    performance.pmd = runMeasured(
+        'pmd',
         options.pmd,
         [
             'cpd',
@@ -60,11 +69,11 @@ function main(argv) {
             pmdReport,
             '--no-fail-on-violation',
             '--no-fail-on-error',
-        ],
-        { stdio: ['ignore', 'pipe', 'inherit'] }
+        ]
     );
 
-    const cloneXml = execFileSync(
+    performance.cloneAlert = runMeasured(
+        'clone-alert',
         process.execPath,
         [
             path.join(process.cwd(), 'dist', 'cli.js'),
@@ -83,15 +92,51 @@ function main(argv) {
             '--format',
             'xml',
         ],
-        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }
+        { stdoutFile: cloneReport }
     );
-    writeFileSync(cloneReport, cloneXml);
+
+    performance.jscpd = runMeasured(
+        'jscpd',
+        options.jscpd,
+        [
+            '--min-tokens',
+            String(options.minimumTokens),
+            '--min-lines',
+            '1',
+            '--max-lines',
+            '1000000',
+            '--max-size',
+            '100mb',
+            '--format',
+            options.jscpdFormats,
+            '--reporters',
+            'json',
+            '--output',
+            jscpdOutDir,
+            '--ignore',
+            '**/node_modules/**,**/dist/**,**/.git/**',
+            '--absolute',
+            '--silent',
+            options.inputPath,
+        ]
+    );
 
     const pmd = parseReport(pmdReport);
     const clone = parseReport(cloneReport);
-    const summary = compareReports(pmd, clone);
+    const jscpdReport = findJscpdReport(jscpdOutDir);
+    const jscpd = parseJscpdReport(jscpdReport);
+    const summary = compareReports(pmd, clone, jscpd);
+    const output = {
+        repoName: options.repoName || null,
+        inputPath: options.inputPath,
+        reports: { pmd: pmdReport, cloneAlert: cloneReport, jscpd: jscpdReport },
+        performance,
+        ...summary,
+    };
+    const summaryReport = path.join(options.outDir, 'summary.json');
+    writeFileSync(summaryReport, `${JSON.stringify({ ...output, reports: { ...output.reports, summary: summaryReport } }, null, 2)}\n`);
 
-    process.stdout.write(`${JSON.stringify({ reports: { pmd: pmdReport, cloneAlert: cloneReport }, ...summary }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ ...output, reports: { ...output.reports, summary: summaryReport } }, null, 2)}\n`);
     return 0;
 }
 
@@ -101,8 +146,12 @@ function parseArgs(argv) {
         minimumTokens: 50,
         extensions: 'ts',
         language: 'typescript',
-        outDir: path.join(tmpdir(), `clone-alert-pmd-compare-${process.pid}`),
+        jscpdFormats: 'typescript',
+        repoName: '',
+        benchDir: path.resolve('bench'),
+        outDir: '',
         pmd: 'pmd',
+        jscpd: 'jscpd',
         help: false,
     };
 
@@ -124,6 +173,18 @@ function parseArgs(argv) {
             options.language = requireValue(argv, ++index, arg);
             continue;
         }
+        if (arg === '--jscpd-formats') {
+            options.jscpdFormats = requireValue(argv, ++index, arg);
+            continue;
+        }
+        if (arg === '--repo-name') {
+            options.repoName = sanitizeRepoName(requireValue(argv, ++index, arg));
+            continue;
+        }
+        if (arg === '--bench-dir') {
+            options.benchDir = path.resolve(requireValue(argv, ++index, arg));
+            continue;
+        }
         if (arg === '--out-dir') {
             options.outDir = path.resolve(requireValue(argv, ++index, arg));
             continue;
@@ -132,13 +193,31 @@ function parseArgs(argv) {
             options.pmd = requireValue(argv, ++index, arg);
             continue;
         }
+        if (arg === '--jscpd') {
+            options.jscpd = requireValue(argv, ++index, arg);
+            continue;
+        }
         if (arg.startsWith('-')) {
             throw new Error(`unknown option: ${arg}`);
         }
         options.inputPath = path.resolve(arg);
     }
 
+    if (!options.outDir) {
+        options.outDir = options.repoName
+            ? path.join(options.benchDir, 'results', options.repoName, timestampForPath())
+            : path.join(tmpdir(), `clone-alert-pmd-compare-${process.pid}`);
+    }
+
     return options;
+}
+
+function sanitizeRepoName(value) {
+    return value.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'repo';
+}
+
+function timestampForPath() {
+    return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z').replace(/[:]/g, '').replace('T', '-');
 }
 
 function requireValue(argv, index, option) {
@@ -164,7 +243,7 @@ function parseReport(filePath) {
         const files = [...match[2].matchAll(/<file\b([\s\S]*?)\/>/g)].map((file) => {
             const fileAttrs = readAttributes(file[1]);
             return {
-                path: decodeXml(fileAttrs.path ?? ''),
+                path: normalizeReportPath(decodeXml(fileAttrs.path ?? '')),
                 line: Number(fileAttrs.line ?? 0),
             };
         });
@@ -177,6 +256,38 @@ function parseReport(filePath) {
     return { duplicates };
 }
 
+function findJscpdReport(outDir) {
+    const report = path.join(outDir, 'jscpd-report.json');
+    if (!existsSync(report)) {
+        throw new Error(`jscpd report was not created: ${report}`);
+    }
+    return report;
+}
+
+function parseJscpdReport(filePath) {
+    const data = JSON.parse(readFileSync(filePath, 'utf8'));
+    const duplicates = (Array.isArray(data.duplicates) ? data.duplicates : []).map((duplicate) => ({
+        lines: Number(duplicate.lines ?? 0),
+        tokens: Number(duplicate.tokens ?? 0),
+        files: [duplicate.firstFile, duplicate.secondFile]
+            .filter(Boolean)
+            .map((file) => ({
+                path: normalizeReportPath(file.name ?? ''),
+                line: Number(file.startLoc?.line ?? file.start ?? 0),
+            })),
+    }));
+    return { duplicates, statistics: data.statistics ?? data.statistic ?? null };
+}
+
+function normalizeReportPath(filePath) {
+    if (!filePath) return '';
+    try {
+        return realpathSync.native(filePath);
+    } catch {
+        return filePath;
+    }
+}
+
 function readAttributes(source) {
     return Object.fromEntries([...source.matchAll(/(\w+)="([^"]*)"/g)].map((match) => [match[1], match[2]]));
 }
@@ -185,7 +296,7 @@ function decodeXml(value) {
     return value.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
 }
 
-function compareReports(pmd, clone) {
+export function compareReports(pmd, clone, jscpd) {
     const pmdExact = new Set(pmd.duplicates.map(exactStartKey));
     const cloneExact = new Set(clone.duplicates.map(exactStartKey));
     const pmdFileSets = new Set(pmd.duplicates.map(fileSetKey));
@@ -194,8 +305,13 @@ function compareReports(pmd, clone) {
     return {
         pmd: summarize(pmd.duplicates),
         cloneAlert: summarize(clone.duplicates),
+        jscpd: summarizeJscpd(jscpd),
         exactStartOverlap: countOverlap(pmdExact, cloneExact),
         fileSetOverlap: countOverlap(pmdFileSets, cloneFileSets),
+        pairOverlap: {
+            cloneAlert: comparePairOverlap(pmd.duplicates, clone.duplicates),
+            jscpd: comparePairOverlap(pmd.duplicates, jscpd.duplicates),
+        },
     };
 }
 
@@ -206,6 +322,19 @@ function summarize(duplicates) {
         uniqueFiles: new Set(duplicates.flatMap((duplicate) => duplicate.files.map((file) => file.path))).size,
         maxTokens: Math.max(0, ...duplicates.map((duplicate) => duplicate.tokens)),
         maxLines: Math.max(0, ...duplicates.map((duplicate) => duplicate.lines)),
+    };
+}
+
+function summarizeJscpd(report) {
+    const total = report.statistics?.total ?? {};
+    return {
+        ...summarize(report.duplicates),
+        totalLines: Number(total.lines ?? 0),
+        totalTokens: Number(total.tokens ?? 0),
+        duplicatedLines: Number(total.duplicatedLines ?? 0),
+        duplicatedTokens: Number(total.duplicatedTokens ?? 0),
+        percentage: Number(total.percentage ?? 0),
+        percentageTokens: Number(total.percentageTokens ?? 0),
     };
 }
 
@@ -225,10 +354,150 @@ function countOverlap(left, right) {
     return count;
 }
 
-try {
-    const status = await main(process.argv.slice(2));
-    process.exitCode = status;
-} catch (error) {
-    process.stderr.write(`compare-pmd-cpd: ${error.message}\n`);
-    process.exitCode = 2;
+function comparePairOverlap(pmdDuplicates, candidateDuplicates) {
+    const candidateExactPairs = new Set();
+    const candidateFilePairs = new Set();
+    forEachPair(candidateDuplicates, (left, right) => {
+        candidateExactPairs.add(pairKey(left, right, exactOccurrenceKey));
+        candidateFilePairs.add(pairKey(left, right, filePathKey));
+    });
+
+    let pmdPairs = 0;
+    const exactPairOverlap = new Set();
+    const filePairOverlap = new Set();
+    forEachPair(pmdDuplicates, (left, right) => {
+        pmdPairs++;
+        const exact = pairKey(left, right, exactOccurrenceKey);
+        if (candidateExactPairs.has(exact)) {
+            exactPairOverlap.add(exact);
+        }
+        const files = pairKey(left, right, filePathKey);
+        if (candidateFilePairs.has(files)) {
+            filePairOverlap.add(files);
+        }
+    });
+
+    return {
+        pmdExactPairs: pmdPairs,
+        candidateExactPairs: candidateExactPairs.size,
+        exactPairOverlap: exactPairOverlap.size,
+        pmdFilePairs: pmdPairs,
+        candidateFilePairs: candidateFilePairs.size,
+        filePairOverlap: filePairOverlap.size,
+    };
+}
+
+function forEachPair(duplicates, visit) {
+    for (const duplicate of duplicates) {
+        for (let left = 0; left < duplicate.files.length; left++) {
+            for (let right = left + 1; right < duplicate.files.length; right++) {
+                visit(duplicate.files[left], duplicate.files[right]);
+            }
+        }
+    }
+}
+
+function pairKey(left, right, fileKey) {
+    return [fileKey(left), fileKey(right)].sort().join('|');
+}
+
+function exactOccurrenceKey(file) {
+    return `${file.path}:${file.line}`;
+}
+
+function filePathKey(file) {
+    return file.path;
+}
+
+function runMeasured(label, command, args, options = {}) {
+    const time = timeCommand(command, args);
+    let result = spawnForMeasurement(time.command, time.args, options);
+    if (result.status !== 0 && isTimeResourceDenied(result.stderr) && (time.command !== command || time.args !== args)) {
+        result = spawnForMeasurement(command, args, options);
+        if (result.status === 0) {
+            return {
+                elapsedMs: Math.round(result.elapsedMs),
+                maxRssBytes: null,
+            };
+        }
+    }
+
+    if (result.error) {
+        throw new Error(`${label} failed to start: ${result.error.message}`);
+    }
+    if (result.status !== 0) {
+        throw new Error(`${label} exited with ${result.status}${stderrTail(result.stderr)}`);
+    }
+
+    return {
+        elapsedMs: Math.round(result.elapsedMs),
+        maxRssBytes: parseMaxRssBytes(result.stderr),
+    };
+}
+
+function spawnForMeasurement(command, args, options) {
+    const stdoutFd = options.stdoutFile ? openSync(options.stdoutFile, 'w') : undefined;
+    const started = process.hrtime.bigint();
+    let result;
+    try {
+        result = spawnSync(command, args, {
+            encoding: 'utf8',
+            stdio: ['ignore', stdoutFd ?? 'pipe', 'pipe'],
+        });
+    } finally {
+        if (stdoutFd !== undefined) {
+            closeSync(stdoutFd);
+        }
+    }
+    const elapsedMs = Number(process.hrtime.bigint() - started) / 1_000_000;
+
+    return {
+        ...result,
+        elapsedMs,
+    };
+}
+
+function timeCommand(command, args) {
+    if (process.platform === 'darwin' && existsSync('/usr/bin/time')) {
+        return { command: '/usr/bin/time', args: ['-l', command, ...args] };
+    }
+    if (existsSync('/usr/bin/time')) {
+        return { command: '/usr/bin/time', args: ['-v', command, ...args] };
+    }
+    return { command, args };
+}
+
+function parseMaxRssBytes(stderr) {
+    const mac = stderr.match(/^\s*(\d+)\s+maximum resident set size/m);
+    if (mac) {
+        return Number(mac[1]);
+    }
+    const gnu = stderr.match(/Maximum resident set size \(kbytes\):\s*(\d+)/);
+    if (gnu) {
+        return Number(gnu[1]) * 1024;
+    }
+    return null;
+}
+
+function isTimeResourceDenied(stderr) {
+    return stderr.includes('sysctl kern.clockrate: Operation not permitted');
+}
+
+function stderrTail(stderr) {
+    const lines = stderr.trim().split(/\r?\n/).filter(Boolean);
+    return lines.length ? `: ${lines.slice(-8).join('\n')}` : '';
+}
+
+if (isCliEntrypoint()) {
+    try {
+        const status = await main(process.argv.slice(2));
+        process.exitCode = status;
+    } catch (error) {
+        process.stderr.write(`compare-pmd-cpd: ${error.message}\n`);
+        process.exitCode = 2;
+    }
+}
+
+function isCliEntrypoint() {
+    return process.argv[1] ? import.meta.url === pathToFileURL(process.argv[1]).href : false;
 }

@@ -142,3 +142,5 @@ vite.config.ts.timestamp-*
 # Local files
 .DS_Store
 .idea/
+
+bench

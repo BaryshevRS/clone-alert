@@ -125,6 +125,10 @@ fixtures PMD для JavaScript/TypeScript CPD tokenizer.
 `npm run pack:dry-run` собирает пакет через `prepack` и показывает состав npm
 tarball без публикации.
 
-`npm run compare:pmd -- <path>` запускает PMD CPD и `clone-alert` на одном
-дереве TypeScript-файлов, сохраняет оба XML-отчета во временную директорию и
-печатает JSON-сводку по количеству дублей, occurrences и пересечениям.
+`npm run compare:pmd -- <path>` запускает PMD CPD, `clone-alert` и Rust-версию
+`jscpd` на одном дереве файлов, сохраняет XML/JSON-отчеты и печатает
+JSON-сводку по времени, peak RSS, количеству дублей, occurrences и пересечениям.
+`jscpd` не является зависимостью проекта: установите его отдельно, например
+глобально, или передайте путь через `--jscpd <command>`. Для benchmark нескольких
+репозиториев используйте `--repo-name <name>`: отчеты будут сложены в
+`bench/results/<name>/<timestamp>/`.
