@@ -14,12 +14,19 @@ export interface TokenizeOptions {
     ignoreLiterals?: boolean;
     /** Дробить токены TS-файлов под PMD typescript (шаблоны, regexp). Только .ts/.tsx. */
     pmdTypescriptCompatibility?: boolean;
+    /**
+     * Токенизировать разметку .svelte (ast.fragment), а не только <script>.
+     * Шаблон и скрипт обычно требуют разных порогов --minimum-tokens, поэтому
+     * слой выносится за тумблер: выключи, чтобы прогнать скрипты отдельно.
+     */
+    svelteTemplates?: boolean;
 }
 
 export const DEFAULTS: Required<TokenizeOptions> = {
     ignoreIdentifiers: false,
     ignoreLiterals: false,
     pmdTypescriptCompatibility: true,
+    svelteTemplates: true,
 };
 
 // Опциональный компилятор (@angular/compiler, @vue/compiler-sfc, svelte) —

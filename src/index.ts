@@ -36,6 +36,7 @@ export class Cpd {
             ignoreIdentifiers: opts.ignoreIdentifiers ?? false,
             ignoreLiterals: opts.ignoreLiterals ?? false,
             pmdTypescriptCompatibility: opts.pmdTypescriptCompatibility ?? true,
+            svelteTemplates: opts.svelteTemplates ?? true,
             angularInlineTemplates: opts.angularInlineTemplates ?? false,
         };
         this.core = new CpdCore(this.opts.minTileSize);
@@ -51,6 +52,7 @@ export class Cpd {
             ignoreIdentifiers: this.opts.ignoreIdentifiers,
             ignoreLiterals: this.opts.ignoreLiterals,
             pmdTypescriptCompatibility: this.opts.pmdTypescriptCompatibility,
+            svelteTemplates: this.opts.svelteTemplates,
         };
 
         if (TS_EXT.has(ext)) {

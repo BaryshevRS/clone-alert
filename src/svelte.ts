@@ -223,7 +223,9 @@ export function tokenizeSvelte(filePath: string, source: string, options: Tokeni
         }
     }
 
-    if (ast.fragment) walkNode(ast.fragment);
+    // Разметку токенизируем только если включён тумблер (по умолчанию да).
+    // Шаблон и скрипт обычно гоняют разными порогами --minimum-tokens.
+    if ((options.svelteTemplates ?? true) && ast.fragment) walkNode(ast.fragment);
 
     return out;
 }

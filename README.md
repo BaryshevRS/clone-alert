@@ -54,6 +54,11 @@ clone-alert [options] [<path>...]
   для `.ts/.tsx` раскладывать токены как PMD `typescript` (дробить шаблонные
   литералы на атомы `` ` `` / `${` / `}` / по символу, схлопывать regexp);
   включено по умолчанию. `.js/.jsx` всегда токенизируются нативным сканером.
+- `--svelte-templates` / `--no-svelte-templates` - токенизировать разметку
+  `.svelte` (`ast.fragment`), а не только `<script>`; включено по умолчанию.
+  Шаблон и код обычно требуют разных `--minimum-tokens` (разметка шумит на
+  низком пороге), поэтому слой вынесен за тумблер: выключите его, чтобы
+  прогнать скрипты отдельным, более низким порогом.
 - `--angular-inline-templates` - дополнительно анализировать inline template в `@Component`.
 - `--skip-angular-inline-templates` - не анализировать inline template в `@Component`; оставлено как явный default/override.
 - `--fail-on-violation` - вернуть exit code `4`, если дубли найдены.
@@ -64,6 +69,10 @@ clone-alert [options] [<path>...]
 node dist/cli.js --minimum-tokens 30 --files src --fail-on-violation
 node dist/cli.js --minimum-tokens 50 --format xml src test
 node dist/cli.js --format json --files src,packages --exclude '**/generated/**'
+
+# Свелте: код низким порогом, разметку — высоким (двумя прогонами)
+node dist/cli.js --minimum-tokens 40 --no-svelte-templates --files src
+node dist/cli.js --minimum-tokens 150 --files src
 ```
 
 Поддерживаемые расширения по умолчанию:
@@ -83,6 +92,12 @@ PMD ES5, раскладываются в такой же поток токено
 Для `.vue`, `.svelte` и Angular HTML токенайзеры используют optional peer-пакеты
 `@vue/compiler-sfc`, `svelte` и `@angular/compiler`. Если пакет не установлен,
 соответствующие файлы будут пропущены с предупреждением.
+
+Токенизация разметки `.svelte` требует **svelte 5+**: используется современный
+AST (`ast.fragment`). На svelte 3/4 `parse` отдаёт legacy-AST (разметка в
+`ast.html`, `ast.fragment` нет), поэтому шаблон молча не сканируется и
+обрабатывается только `<script>` — без ошибок, но с меньшим покрытием. Для
+анализа разметки на старом svelte обновите компилятор до 5+.
 
 Angular inline templates выключены по умолчанию, чтобы TypeScript-режим был ближе
 к PMD CPD. Включайте `--angular-inline-templates`, если хотите сканировать

@@ -120,6 +120,20 @@ describe('Svelte tokenizer — нормализация', () => {
     });
 });
 
+describe('Svelte tokenizer — тумблер svelteTemplates', () => {
+    const src = '<script>let x = foo(1);</script><div>{a + b}</div>';
+
+    test('по умолчанию разметка токенизируется', () => {
+        expect(img(src)).toContain(`${SV}<div`);
+    });
+
+    test('svelteTemplates:false -> только <script>, разметки нет', () => {
+        const toks = img(src, { svelteTemplates: false });
+        expect(toks.some((t) => t.startsWith(SV))).toBe(false);
+        expect(toks).toEqual(['let', 'x', '=', 'foo', '(', '1', ')', ';', '']);
+    });
+});
+
 describe('Svelte tokenizer — устойчивость', () => {
     test('пустой источник и пробелы -> []', () => {
         expect(img('')).toEqual([]);

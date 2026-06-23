@@ -52,6 +52,11 @@ Options:
   --no-pmd-typescript-compatibility
                                   Tokenize .ts/.tsx with the native TypeScript
                                   scanner (a template literal stays one token).
+  --svelte-templates              Tokenize .svelte markup (ast.fragment), not
+                                  just <script>. Default.
+  --no-svelte-templates           Tokenize only <script> in .svelte files.
+                                  Use to run markup and code at different
+                                  --minimum-tokens thresholds.
   --angular-inline-templates      Also scan Angular @Component inline templates.
   --skip-angular-inline-templates Do not scan inline Angular templates. Default.
   --fail-on-violation             Exit with code 4 when duplications are found.
@@ -109,6 +114,7 @@ function parseArgs(argv: string[]): CliOptions {
     let ignoreIdentifiers = false;
     let ignoreLiterals = false;
     let pmdTypescriptCompatibility = true;
+    let svelteTemplates = true;
     let angularInlineTemplates = false;
     let format: ReportFormat = 'text';
     let failOnViolation = false;
@@ -192,6 +198,14 @@ function parseArgs(argv: string[]): CliOptions {
             pmdTypescriptCompatibility = false;
             continue;
         }
+        if (arg === '--svelte-templates') {
+            svelteTemplates = true;
+            continue;
+        }
+        if (arg === '--no-svelte-templates') {
+            svelteTemplates = false;
+            continue;
+        }
         if (arg === '--angular-inline-templates') {
             angularInlineTemplates = true;
             continue;
@@ -218,6 +232,7 @@ function parseArgs(argv: string[]): CliOptions {
         ignoreIdentifiers,
         ignoreLiterals,
         pmdTypescriptCompatibility,
+        svelteTemplates,
         angularInlineTemplates,
         format,
         failOnViolation,
