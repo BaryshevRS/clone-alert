@@ -20,6 +20,12 @@ export interface TokenizeOptions {
      * слой выносится за тумблер: выключи, чтобы прогнать скрипты отдельно.
      */
     svelteTemplates?: boolean;
+    /**
+     * Токенизировать разметку .vue (descriptor.template.ast), а не только
+     * <script>. Аналогично svelteTemplates — слой за тумблером ради раздельных
+     * порогов --minimum-tokens для шаблона и кода.
+     */
+    vueTemplates?: boolean;
 }
 
 export const DEFAULTS: Required<TokenizeOptions> = {
@@ -27,6 +33,7 @@ export const DEFAULTS: Required<TokenizeOptions> = {
     ignoreLiterals: false,
     pmdTypescriptCompatibility: true,
     svelteTemplates: true,
+    vueTemplates: true,
 };
 
 // Опциональный компилятор (@angular/compiler, @vue/compiler-sfc, svelte) —
@@ -56,8 +63,6 @@ export function moduleResolveDirs(filePath: string): string[] {
     const slash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
     return slash > 0 ? [filePath.slice(0, slash)] : [];
 }
-
-let warnedVue = false;
 
 // --- Ремаппинг позиций встроенного блока в координаты файла ---
 // Токены блока считаются от (0,0) внутри блока; baseLine/baseCol (1-based) дают
@@ -410,33 +415,6 @@ export function scriptKindFor(ext: string): ts.ScriptKind {
     return ts.ScriptKind.TS;
 }
 
-// --- Vue SFC ---
-export function tokenizeVue(filePath: string, source: string, opts: TokenizeOptions = {}): RawToken[] {
-    const sfc = optional('@vue/compiler-sfc', moduleResolveDirs(filePath));
-    if (!sfc) {
-        if (!warnedVue) {
-            console.warn('[cpd] .vue пропущен: установите @vue/compiler-sfc');
-            warnedVue = true;
-        }
-        return [];
-    }
-    const { descriptor } = sfc.parse(source, { filename: filePath });
-    const out: RawToken[] = [];
-    for (const block of [descriptor.scriptSetup, descriptor.script]) {
-        if (!block) continue;
-        const lang = block.lang ?? 'js';
-        const kind =
-            lang === 'tsx' || lang === 'jsx' ? ts.ScriptKind.TSX : lang === 'ts' ? ts.ScriptKind.TS : ts.ScriptKind.JS;
-        const baseLine = block.loc.start.line; // 1-based
-        const baseCol = block.loc.start.column; // 1-based
-        const toks = tokenizeTypeScript(filePath, block.content, opts, kind);
-        for (const t of toks) out.push(remap(t, baseLine, baseCol));
-        out.push({ image: '', line: baseLine, column: baseCol, barrier: true });
-    }
-    // Vue-шаблон: descriptor.template.ast доступен, структуру/выражения можно
-    // добавить по той же схеме, что в src/angular.ts (отдельным модулем-расширением).
-    return out;
-}
-
-// Svelte (.svelte) живёт в отдельном модуле-расширении src/svelte.ts по образцу
-// src/angular.ts — он токенизирует и <script>, и разметку (ast.fragment).
+// Vue (.vue) и Svelte (.svelte) живут в отдельных модулях-расширениях
+// src/vue.ts и src/svelte.ts по образцу src/angular.ts — каждый токенизирует
+// и <script>, и разметку (descriptor.template.ast / ast.fragment).

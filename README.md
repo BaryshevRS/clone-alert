@@ -59,6 +59,12 @@ clone-alert [options] [<path>...]
   Шаблон и код обычно требуют разных `--minimum-tokens` (разметка шумит на
   низком пороге), поэтому слой вынесен за тумблер: выключите его, чтобы
   прогнать скрипты отдельным, более низким порогом.
+- `--vue-templates` / `--no-vue-templates` - токенизировать разметку `.vue`
+  (`descriptor.template.ast`), а не только `<script>`; включено по умолчанию.
+  Как и у svelte, слой вынесен за тумблер ради раздельных порогов для разметки
+  и кода. Выражения биндингов/интерполяций (`{{ }}`, `:prop`, `v-if`, `@event`)
+  токенизируются как TS в скоупе компонента, поэтому дубль выражения
+  «шаблон ↔ `<script setup>`» тоже ловится.
 - `--angular-inline-templates` - дополнительно анализировать inline template в `@Component`.
 - `--skip-angular-inline-templates` - не анализировать inline template в `@Component`; оставлено как явный default/override.
 - `--fail-on-violation` - вернуть exit code `4`, если дубли найдены.

@@ -4,7 +4,8 @@ import * as path from 'node:path';
 import { extractAngularInlineTemplates, tokenizeAngularHtml } from './angular';
 import { CpdCore, type Mark, type Match, type RawToken } from './core';
 import { tokenizeSvelte } from './svelte';
-import { scriptKindFor, type TokenizeOptions, tokenizeTypeScript, tokenizeVue } from './tokenizers';
+import { scriptKindFor, type TokenizeOptions, tokenizeTypeScript } from './tokenizers';
+import { tokenizeVue } from './vue';
 
 export { Mark, Match, TokenEntry } from './core';
 
@@ -37,6 +38,7 @@ export class Cpd {
             ignoreLiterals: opts.ignoreLiterals ?? false,
             pmdTypescriptCompatibility: opts.pmdTypescriptCompatibility ?? true,
             svelteTemplates: opts.svelteTemplates ?? true,
+            vueTemplates: opts.vueTemplates ?? true,
             angularInlineTemplates: opts.angularInlineTemplates ?? false,
         };
         this.core = new CpdCore(this.opts.minTileSize);
@@ -53,6 +55,7 @@ export class Cpd {
             ignoreLiterals: this.opts.ignoreLiterals,
             pmdTypescriptCompatibility: this.opts.pmdTypescriptCompatibility,
             svelteTemplates: this.opts.svelteTemplates,
+            vueTemplates: this.opts.vueTemplates,
         };
 
         if (TS_EXT.has(ext)) {

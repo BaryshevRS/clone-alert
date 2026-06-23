@@ -57,6 +57,10 @@ Options:
   --no-svelte-templates           Tokenize only <script> in .svelte files.
                                   Use to run markup and code at different
                                   --minimum-tokens thresholds.
+  --vue-templates                 Tokenize .vue markup (descriptor.template.ast),
+                                  not just <script>. Default.
+  --no-vue-templates              Skip .vue markup; scan the <script> block
+                                  alone (handy for a code-only threshold pass).
   --angular-inline-templates      Also scan Angular @Component inline templates.
   --skip-angular-inline-templates Do not scan inline Angular templates. Default.
   --fail-on-violation             Exit with code 4 when duplications are found.
@@ -115,6 +119,7 @@ function parseArgs(argv: string[]): CliOptions {
     let ignoreLiterals = false;
     let pmdTypescriptCompatibility = true;
     let svelteTemplates = true;
+    let vueTemplates = true;
     let angularInlineTemplates = false;
     let format: ReportFormat = 'text';
     let failOnViolation = false;
@@ -206,6 +211,14 @@ function parseArgs(argv: string[]): CliOptions {
             svelteTemplates = false;
             continue;
         }
+        if (arg === '--vue-templates') {
+            vueTemplates = true;
+            continue;
+        }
+        if (arg === '--no-vue-templates') {
+            vueTemplates = false;
+            continue;
+        }
         if (arg === '--angular-inline-templates') {
             angularInlineTemplates = true;
             continue;
@@ -233,6 +246,7 @@ function parseArgs(argv: string[]): CliOptions {
         ignoreLiterals,
         pmdTypescriptCompatibility,
         svelteTemplates,
+        vueTemplates,
         angularInlineTemplates,
         format,
         failOnViolation,
