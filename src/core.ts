@@ -11,8 +11,8 @@
 export const S = '\uE000';
 export const TS_ID = `${S}ID`; // нормализованный идентификатор (TS)
 export const TS_LIT = `${S}LIT`; // нормализованный литерал (TS)
-export const NG_TEXT = `${S}NGTEXT`; // статический текст шаблона
-export const NG_INTERP = `${S}NGINTERP`; // интерполяция/binding шаблона
+// Токены конкретных фреймворков (Angular/Vue/Svelte) живут в своих модулях-
+// расширениях (src/angular.ts и т.д.) и строятся поверх общего сентинела S.
 
 export interface RawToken {
     image: string;

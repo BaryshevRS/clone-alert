@@ -1,16 +1,9 @@
 // index.ts
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { extractAngularInlineTemplates, tokenizeAngularHtml } from './angular';
 import { CpdCore, type Mark, type Match, type RawToken } from './core';
-import {
-    extractAngularInlineTemplates,
-    scriptKindFor,
-    type TokenizeOptions,
-    tokenizeAngularHtml,
-    tokenizeSvelte,
-    tokenizeTypeScript,
-    tokenizeVue,
-} from './tokenizers';
+import { scriptKindFor, type TokenizeOptions, tokenizeSvelte, tokenizeTypeScript, tokenizeVue } from './tokenizers';
 
 export { Mark, Match, TokenEntry } from './core';
 
@@ -65,7 +58,7 @@ export class Cpd {
 
             if (this.opts.angularInlineTemplates && source.includes('@Component')) {
                 for (const tpl of extractAngularInlineTemplates(filePath, source)) {
-                    const tplTokens = tokenizeAngularHtml(filePath, tpl.code, { line: tpl.line, col: tpl.col });
+                    const tplTokens = tokenizeAngularHtml(filePath, tpl.code, { line: tpl.line, col: tpl.col }, tok);
                     if (tplTokens.length) {
                         all.push({ image: '', line: tpl.line, column: tpl.col, barrier: true });
                         all.push(...tplTokens);
@@ -93,7 +86,7 @@ export class Cpd {
 
         if (HTML_EXT.has(ext)) {
             // Внешний Angular-шаблон (обычный HTML тоже парсится).
-            this.core.addFile(filePath, tokenizeAngularHtml(filePath, source));
+            this.core.addFile(filePath, tokenizeAngularHtml(filePath, source, { line: 1, col: 1 }, tok));
             return;
         }
 

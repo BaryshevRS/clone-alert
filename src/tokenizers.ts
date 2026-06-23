@@ -1,6 +1,6 @@
 // tokenizers.ts
 import * as ts from 'typescript';
-import { NG_INTERP, NG_TEXT, type RawToken, TS_ID, TS_LIT } from './core';
+import { type RawToken, TS_ID, TS_LIT } from './core';
 
 // ESM-пользователям: заменить require на createRequire(import.meta.url)
 // или сделать функции async с dynamic import.
@@ -16,7 +16,7 @@ export interface TokenizeOptions {
     pmdTypescriptCompatibility?: boolean;
 }
 
-const DEFAULTS: Required<TokenizeOptions> = {
+export const DEFAULTS: Required<TokenizeOptions> = {
     ignoreIdentifiers: false,
     ignoreLiterals: false,
     pmdTypescriptCompatibility: true,
@@ -27,7 +27,7 @@ const DEFAULTS: Required<TokenizeOptions> = {
 // (берём компилятор той версии, что стоит в сканируемом проекте), и лишь
 // потом падаем на собственные node_modules clone-alert. fromPaths обычно =
 // [dirname(filePath)] — Node поднимается по node_modules от этой точки.
-function optional<T = any>(name: string, fromPaths?: string[]): T | null {
+export function optional<T = any>(name: string, fromPaths?: string[]): T | null {
     try {
         const id = require.resolve(name, fromPaths && fromPaths.length ? { paths: fromPaths } : undefined);
         return require(id);
@@ -45,19 +45,18 @@ function optional<T = any>(name: string, fromPaths?: string[]): T | null {
 
 // Стартовая точка для резолва peer-компилятора: каталог анализируемого файла.
 // Node сам пройдёт node_modules вверх до корня проекта.
-function moduleResolveDirs(filePath: string): string[] {
+export function moduleResolveDirs(filePath: string): string[] {
     const slash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
     return slash > 0 ? [filePath.slice(0, slash)] : [];
 }
 
 let warnedVue = false;
 let warnedSvelte = false;
-let warnedNg = false;
 
 // --- Ремаппинг позиций встроенного блока в координаты файла ---
 // Токены блока считаются от (0,0) внутри блока; baseLine/baseCol (1-based) дают
 // абсолютную позицию начала блока. Сдвиг по столбцу только для первой строки блока.
-function remap(tok: RawToken, baseLine: number, baseCol: number): RawToken {
+export function remap(tok: RawToken, baseLine: number, baseCol: number): RawToken {
     const firstLine = tok.line === 1;
     const endFirstLine = (tok.endLine ?? tok.line) === 1;
     return {
@@ -428,8 +427,8 @@ export function tokenizeVue(filePath: string, source: string, opts: TokenizeOpti
         for (const t of toks) out.push(remap(t, baseLine, baseCol));
         out.push({ image: '', line: baseLine, column: baseCol, barrier: true });
     }
-    // Vue-шаблон: descriptor.template.ast доступен, структуру можно добавить
-    // по той же схеме, что Angular ниже. Оставлено как расширение.
+    // Vue-шаблон: descriptor.template.ast доступен, структуру/выражения можно
+    // добавить по той же схеме, что в src/angular.ts (отдельным модулем-расширением).
     return out;
 }
 
@@ -469,116 +468,4 @@ function offsetToLineCol(source: string, offset: number): { line: number; col: n
         }
     }
     return { line, col };
-}
-
-// --- Angular HTML-шаблон (внешний .html или inline) ---
-// Структурный токенайзер: теги, имена атрибутов, нормализованные текст/binding.
-// Образы лежат в отдельном неймспейсе => кросс-матчей со script-токенами нет.
-export function tokenizeAngularHtml(
-    filePath: string,
-    template: string,
-    base: { line: number; col: number } = { line: 1, col: 1 }
-): RawToken[] {
-    const ngc = optional('@angular/compiler', moduleResolveDirs(filePath));
-    if (!ngc || typeof ngc.parseTemplate !== 'function') {
-        if (!warnedNg) {
-            console.warn('[cpd] Angular-шаблон пропущен: установите @angular/compiler');
-            warnedNg = true;
-        }
-        return [];
-    }
-    let parsed: any;
-    try {
-        parsed = ngc.parseTemplate(template, filePath, { preserveWhitespaces: false });
-    } catch {
-        return [];
-    }
-    if (!parsed || !Array.isArray(parsed.nodes)) return [];
-
-    const local: RawToken[] = [];
-    const emit = (image: string, node: any) => {
-        const sp = node?.sourceSpan ?? node?.startSourceSpan;
-        const loc = sp?.start;
-        local.push({ image, line: (loc?.line ?? 0) + 1, column: (loc?.col ?? 0) + 1 });
-    };
-
-    const walk = (node: any) => {
-        if (node == null) return;
-
-        const walkAll = (items: unknown[] | undefined) => {
-            for (const item of items ?? []) walk(item);
-        };
-
-        // Element (есть имя тега + дети)
-        if (typeof node.name === 'string' && Array.isArray(node.children)) {
-            emit(`<${node.name}`, node);
-            walkAll(node.attributes);
-            walkAll(node.inputs);
-            walkAll(node.outputs);
-            walkAll(node.references);
-            walkAll(node.children);
-            return;
-        }
-        // Контейнеры: ng-template, control-flow блоки (@if/@for/@switch/@defer)
-        if (Array.isArray(node.children) || Array.isArray(node.branches) || Array.isArray(node.cases)) {
-            if (typeof node.tagName === 'string') emit(`<${node.tagName}`, node);
-            walkAll(node.attributes);
-            walkAll(node.templateAttrs);
-            walkAll(node.children);
-            walkAll(node.branches);
-            walkAll(node.cases);
-            return;
-        }
-        // Атрибут / input / output / reference: имя структурно, значение нормализуем
-        if (typeof node.name === 'string') {
-            emit(`@attr:${node.name}`, node);
-            return;
-        }
-        // BoundText / интерполяция (value это AST-выражение)
-        if (node.value && typeof node.value === 'object') {
-            emit(NG_INTERP, node);
-            return;
-        }
-        // Text
-        if (typeof node.value === 'string') {
-            if (node.value.trim().length) emit(NG_TEXT, node);
-            return;
-        }
-    };
-    for (const n of parsed.nodes) walk(n);
-
-    return local.map((t) => remap(t, base.line, base.col));
-}
-
-// --- Извлечение inline-шаблонов из @Component({ template: `...` }) ---
-export function extractAngularInlineTemplates(
-    filePath: string,
-    source: string
-): { code: string; line: number; col: number }[] {
-    const sf = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-    const result: { code: string; line: number; col: number }[] = [];
-
-    const visit = (node: ts.Node) => {
-        if (ts.isDecorator(node) && ts.isCallExpression(node.expression)) {
-            const callee = node.expression.expression;
-            const name = ts.isIdentifier(callee) ? callee.text : '';
-            const arg = node.expression.arguments[0];
-            if (name === 'Component' && arg && ts.isObjectLiteralExpression(arg)) {
-                for (const p of arg.properties) {
-                    if (!ts.isPropertyAssignment(p) || !p.name || !ts.isIdentifier(p.name)) continue;
-                    if (p.name.text !== 'template') continue;
-                    const init = p.initializer;
-                    if (ts.isStringLiteralLike(init)) {
-                        // позиция первого символа содержимого (после кавычки/бэктика)
-                        const contentStart = init.getStart(sf) + 1;
-                        const { line, character } = sf.getLineAndCharacterOfPosition(contentStart);
-                        result.push({ code: init.text, line: line + 1, col: character + 1 });
-                    }
-                }
-            }
-        }
-        ts.forEachChild(node, visit);
-    };
-    visit(sf);
-    return result;
 }
