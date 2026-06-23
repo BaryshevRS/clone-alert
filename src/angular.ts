@@ -149,23 +149,30 @@ export function tokenizeAngularHtml(
             for (const item of items ?? []) walk(item);
         };
 
+        // Все коллекции биндингов узла (общие для Element и Template/ng-template).
+        const walkBindings = (n: any) => {
+            walkAll(n.attributes);
+            walkAll(n.inputs);
+            walkAll(n.outputs);
+            walkAll(n.directives);
+            walkAll(n.references);
+        };
+
         // Element (есть имя тега + дети)
         if (typeof node.name === 'string' && Array.isArray(node.children)) {
             emit(`${NG}<${node.name}`, node);
-            walkAll(node.attributes);
-            walkAll(node.inputs);
-            walkAll(node.outputs);
-            walkAll(node.directives);
-            walkAll(node.references);
+            walkBindings(node);
             walkAll(node.children);
             return;
         }
-        // Контейнеры: ng-template, control-flow блоки (@if/@for/@switch/@defer)
+        // Контейнеры: ng-template, control-flow блоки (@if/@for/@switch/@defer).
+        // node.expression тянет и листовые блоки без детей (@case (…) -> SwitchBlockCase).
         if (
             Array.isArray(node.children) ||
             Array.isArray(node.branches) ||
             Array.isArray(node.cases) ||
-            Array.isArray(node.groups)
+            Array.isArray(node.groups) ||
+            node.expression
         ) {
             if (typeof node.tagName === 'string') emit(`${NG}<${node.tagName}`, node);
             // Управляющие выражения блоков (@for of …; track …; @if/@case (…)).
@@ -177,8 +184,9 @@ export function tokenizeAngularHtml(
                 emit(`${NG}@track`, node);
                 walkExpr(node.trackBy, node);
             }
-            walkAll(node.attributes);
-            walkAll(node.templateAttrs);
+            walkBindings(node);
+            walkAll(node.templateAttrs); // *ngIf / *ngFor микросинтаксис
+            walkAll(node.variables); // let-… на ng-template
             walkAll(node.item ? [node.item] : undefined);
             walkAll(node.children);
             walkAll(node.branches);

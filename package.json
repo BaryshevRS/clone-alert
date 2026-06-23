@@ -80,6 +80,7 @@
     }
   },
   "devDependencies": {
+    "@angular/compiler": "^22.0.2",
     "@biomejs/biome": "^2.5.0",
     "@types/node": "^24.0.0",
     "knip": "^6.5.0",
