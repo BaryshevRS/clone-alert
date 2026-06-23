@@ -51,7 +51,6 @@ export function moduleResolveDirs(filePath: string): string[] {
 }
 
 let warnedVue = false;
-let warnedSvelte = false;
 
 // --- Ремаппинг позиций встроенного блока в координаты файла ---
 // Токены блока считаются от (0,0) внутри блока; baseLine/baseCol (1-based) дают
@@ -432,40 +431,5 @@ export function tokenizeVue(filePath: string, source: string, opts: TokenizeOpti
     return out;
 }
 
-// --- Svelte ---
-export function tokenizeSvelte(filePath: string, source: string, opts: TokenizeOptions = {}): RawToken[] {
-    const svelte = optional('svelte/compiler', moduleResolveDirs(filePath));
-    if (!svelte) {
-        if (!warnedSvelte) {
-            console.warn('[cpd] .svelte пропущен: установите svelte');
-            warnedSvelte = true;
-        }
-        return [];
-    }
-    const ast = svelte.parse(source, { filename: filePath });
-    const out: RawToken[] = [];
-    for (const part of [ast.instance, ast.module]) {
-        if (!part) continue;
-        const start = part.content.start as number; // offset начала кода <script>
-        const { line, col } = offsetToLineCol(source, start);
-        const code = source.slice(part.content.start, part.content.end);
-        const toks = tokenizeTypeScript(filePath, code, opts, ts.ScriptKind.TS);
-        for (const t of toks) out.push(remap(t, line, col));
-        out.push({ image: '', line, column: col, barrier: true });
-    }
-    return out;
-}
-
-function offsetToLineCol(source: string, offset: number): { line: number; col: number } {
-    let line = 1;
-    let col = 1;
-    for (let i = 0; i < offset && i < source.length; i++) {
-        if (source[i] === '\n') {
-            line++;
-            col = 1;
-        } else {
-            col++;
-        }
-    }
-    return { line, col };
-}
+// Svelte (.svelte) живёт в отдельном модуле-расширении src/svelte.ts по образцу
+// src/angular.ts — он токенизирует и <script>, и разметку (ast.fragment).

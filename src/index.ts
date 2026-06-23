@@ -3,7 +3,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { extractAngularInlineTemplates, tokenizeAngularHtml } from './angular';
 import { CpdCore, type Mark, type Match, type RawToken } from './core';
-import { scriptKindFor, type TokenizeOptions, tokenizeSvelte, tokenizeTypeScript, tokenizeVue } from './tokenizers';
+import { tokenizeSvelte } from './svelte';
+import { scriptKindFor, type TokenizeOptions, tokenizeTypeScript, tokenizeVue } from './tokenizers';
 
 export { Mark, Match, TokenEntry } from './core';
 

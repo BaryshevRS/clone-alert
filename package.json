@@ -84,6 +84,7 @@
     "@biomejs/biome": "^2.5.0",
     "@types/node": "^24.0.0",
     "knip": "^6.5.0",
+    "svelte": "^5.56.3",
     "vitest": "^4.1.6"
   },
   "engines": {
