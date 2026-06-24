@@ -1,24 +1,29 @@
-// svelte.ts
-// Токенайзер .svelte: <script>/<script module> + разметка (ast.fragment).
-// Стоит поверх общего слоя tokenizers.ts (optional/moduleResolveDirs/remap/
-// tokenizeTypeScript) и сентинела S из core.ts. Ядро про Svelte не знает.
-//
-// Два слоя токенов:
-//   1) структура разметки (теги, блоки, директивы, статик-текст) -> образы с
-//      префиксом SV (через сентинел S) => НЕ матчатся со script-токенами;
-//   2) выражения внутри {...}/биндингов -> это тот же TypeScript в той же области
-//      видимости компонента, поэтому режем slice исходника и гоним через общий
-//      tokenizeTypeScript БЕЗ префикса => дубль выражения шаблон<->script ловится.
+/**
+ * `.svelte` tokenizer: `<script>`/`<script module>` + markup (ast.fragment).
+ * Built on top of the shared layer in tokenizers.ts (optional/moduleResolveDirs/
+ * remap/tokenizeTypeScript) and the sentinel `S` from core.ts. The core knows
+ * nothing about Svelte.
+ *
+ * Two token layers:
+ *   1. markup structure (tags, blocks, directives, static text) -> images with
+ *      the SV prefix (via the sentinel S), so they do NOT match script tokens;
+ *   2. expressions inside `{...}`/bindings -> the same TypeScript in the same
+ *      component scope, so we slice the source and run it through the shared
+ *      tokenizeTypeScript WITHOUT a prefix, so a duplicated expression across
+ *      template<->script is caught.
+ *
+ * @packageDocumentation
+ */
 import * as ts from 'typescript';
 import { type RawToken, S } from './core';
 import { moduleResolveDirs, optional, remap, type TokenizeOptions, tokenizeTypeScript } from './tokenizers';
 
-const SV = `${S}SV:`; // структурный маркер разметки
-const SV_TEXT = `${S}SVTEXT`; // непустой статический текст
+const SV = `${S}SV:`; // structural markup marker
+const SV_TEXT = `${S}SVTEXT`; // non-empty static text
 
 let warnedSvelte = false;
 
-// offset -> {line, col} (оба 1-based) по предрассчитанной карте начал строк.
+/** Build an offset -> {line, col} mapper (both 1-based) from a precomputed line-start table. */
 function makeOffsetMapper(source: string): (offset: number) => { line: number; col: number } {
     const lineStarts = [0];
     for (let i = 0; i < source.length; i++) {
@@ -36,11 +41,12 @@ function makeOffsetMapper(source: string): (offset: number) => { line: number; c
     };
 }
 
+/** Tokenize a `.svelte` component (`<script>` blocks + markup). */
 export function tokenizeSvelte(filePath: string, source: string, options: TokenizeOptions = {}): RawToken[] {
     const svelte = optional<{ parse: (src: string, opts: any) => any }>('svelte/compiler', moduleResolveDirs(filePath));
     if (!svelte || typeof svelte.parse !== 'function') {
         if (!warnedSvelte) {
-            console.warn('[cpd] .svelte пропущен: установите svelte');
+            console.warn('[cpd] .svelte skipped: install svelte');
             warnedSvelte = true;
         }
         return [];
@@ -48,7 +54,7 @@ export function tokenizeSvelte(filePath: string, source: string, options: Tokeni
 
     let ast: any;
     try {
-        // modern: true -> разметка в ast.fragment (станет дефолтом в Svelte 6).
+        // modern: true -> markup lives in ast.fragment (becomes the default in Svelte 6).
         ast = svelte.parse(source, { filename: filePath, modern: true });
     } catch {
         return [];
@@ -57,14 +63,14 @@ export function tokenizeSvelte(filePath: string, source: string, options: Tokeni
     const out: RawToken[] = [];
     const at = makeOffsetMapper(source);
 
-    // --- Структурный токен разметки (координаты от offset узла) ---
+    // --- Structural markup token (coordinates from the node offset) ---
     const emitStruct = (image: string, node: any) => {
         const off = typeof node?.start === 'number' ? node.start : 0;
         const { line, col } = at(off);
         out.push({ image, line, column: col });
     };
 
-    // --- Выражение: slice исходника -> общий TS-токенайзер -> remap ---
+    // --- Expression: slice the source -> shared TS tokenizer -> remap ---
     const emitExpr = (node: any) => {
         if (!node || typeof node.start !== 'number' || typeof node.end !== 'number') return;
         const code = source.slice(node.start, node.end);
@@ -75,7 +81,7 @@ export function tokenizeSvelte(filePath: string, source: string, options: Tokeni
         }
     };
 
-    // --- <script> и <script module>: чистый TS, как у обычного .ts ---
+    // --- <script> and <script module>: plain TS, like a regular .ts ---
     for (const part of [ast.instance, ast.module]) {
         if (!part?.content) continue;
         const start = part.content.start as number;
@@ -87,17 +93,17 @@ export function tokenizeSvelte(filePath: string, source: string, options: Tokeni
         out.push({ image: '', line, column: col, barrier: true });
     }
 
-    // --- Разметка ---
+    // --- Markup ---
     const walkAttr = (attr: any) => {
         if (!attr || typeof attr !== 'object') return;
         switch (attr.type) {
             case 'Attribute': {
                 emitStruct(`${SV}@${attr.name}`, attr);
                 const v = attr.value;
-                if (v === true) return; // булев атрибут без значения
+                if (v === true) return; // boolean attribute with no value
                 if (Array.isArray(v))
                     v.forEach(walkNode); // (Text | ExpressionTag)[]
-                else walkNode(v); // одиночный ExpressionTag
+                else walkNode(v); // a single ExpressionTag
                 return;
             }
             case 'SpreadAttribute':
@@ -214,7 +220,7 @@ export function tokenizeSvelte(filePath: string, source: string, options: Tokeni
                     if (node.fragment) walkNode(node.fragment);
                     return;
                 }
-                // Неизвестный узел — попробуем общие поля, чтобы не терять выражения.
+                // Unknown node — try the common fields so we don't lose expressions.
                 if (node.expression) emitExpr(node.expression);
                 if (node.fragment) walkNode(node.fragment);
                 if (Array.isArray(node.nodes)) node.nodes.forEach(walkNode);
@@ -223,8 +229,8 @@ export function tokenizeSvelte(filePath: string, source: string, options: Tokeni
         }
     }
 
-    // Разметку токенизируем только если включён тумблер (по умолчанию да).
-    // Шаблон и скрипт обычно гоняют разными порогами --minimum-tokens.
+    // Markup is tokenized only when the toggle is on (default yes). Markup and
+    // script are usually run at different --minimum-tokens thresholds.
     if ((options.svelteTemplates ?? true) && ast.fragment) walkNode(ast.fragment);
 
     return out;

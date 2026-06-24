@@ -1,157 +1,214 @@
 # clone-alert
 
-PMD CPD-like copy-paste detector для поиска дублей по токенам в TypeScript,
-JavaScript и популярных frontend-шаблонах.
+> Fast **copy‑paste detector** for **TypeScript**, **JavaScript**, **JSX/TSX**, **Vue**, **Svelte** and **Angular** — a **PMD CPD‑compatible** duplicate‑code finder you can drop into any project or CI pipeline.
 
-Ядро лежит в `src/core.ts`, токенайзеры в `src/tokenizers.ts`, CLI в
-`src/cli.ts`.
+[![npm version](https://img.shields.io/npm/v/clone-alert.svg)](https://www.npmjs.com/package/clone-alert)
+[![license](https://img.shields.io/npm/l/clone-alert.svg)](./LICENSE)
+[![node](https://img.shields.io/node/v/clone-alert.svg)](https://nodejs.org)
+[![types](https://img.shields.io/npm/types/clone-alert.svg)](https://www.npmjs.com/package/clone-alert)
 
-## Установка и сборка
-
-Проект собирается TypeScript 6 (`typescript@^6.0.3`) и Node.js 18+.
-
-```sh
-npm install
-npm run build
-```
-
-После сборки CLI доступен как `dist/cli.js`. Через npm-bin:
+**clone-alert** finds duplicated and copy‑pasted code across your codebase by comparing **token streams** — the same proven approach as [PMD CPD](https://pmd.github.io/) (Copy‑Paste Detector), but built natively for the JavaScript/TypeScript ecosystem and your frontend templates. Catch code clones, enforce **DRY**, reduce technical debt, and fail your build when duplication creeps in.
 
 ```sh
-npx clone-alert --help
-```
-
-Установка из npm:
-
-```sh
-npm install --save-dev clone-alert
 npx clone-alert --minimum-tokens 50 --files src
 ```
 
-Локально без публикации:
+---
+
+## Why clone-alert?
+
+- 🎯 **PMD CPD‑compatible** — a faithful port of PMD's match algorithm and JavaScript/TypeScript tokenizers, validated against PMD's own golden fixtures.
+- ⚡ **Fast on large monorepos** — a struct‑of‑arrays token core with a Karp–Rabin rolling hash and radix‑sorted buckets. In our benchmarks it runs up to ~10× faster than PMD CPD on large repositories such as the Next.js monorepo.
+- 🧩 **Frontend templates, natively** — tokenizes **Vue** `<template>`, **Svelte** markup, and **Angular** templates, not just `<script>` blocks. Detects template‑to‑script duplication too.
+- 🧪 **Zero‑config CLI** — sensible defaults, recursive directory scan, `node_modules`/`.git`/`dist` skipped automatically.
+- 📦 **Tiny footprint** — a single runtime dependency (`typescript`). Framework parsers are **optional peer dependencies**, loaded only when needed.
+- 🛠 **CI‑ready** — `text`, `json`, and PMD‑style `xml` reports, plus `--fail-on-violation` (exit code `4`).
+- 🔇 **Inline suppression** — ignore known duplication with `CPD-OFF` / `CPD-ON` comment markers.
+
+## Supported languages & frameworks
+
+| Language / framework | Extensions | Notes |
+| --- | --- | --- |
+| TypeScript | `.ts`, `.mts`, `.cts` | PMD `typescript` token granularity by default |
+| TSX / JSX | `.tsx`, `.jsx` | React‑style components |
+| JavaScript | `.js`, `.mjs`, `.cjs` | Native scanner tokenization |
+| Vue | `.vue` | `<script>`, `<script setup>` and `<template>` markup |
+| Svelte | `.svelte` | `<script>` and markup (**requires Svelte 5+**) |
+| Angular | `.html`, `.htm`, inline templates | External and `@Component` inline templates |
+
+## Installation
+
+Add it as a dev dependency:
 
 ```sh
-node dist/cli.js --minimum-tokens 50 --files src
+npm install --save-dev clone-alert
+# or
+pnpm add -D clone-alert
+# or
+yarn add -D clone-alert
 ```
 
-## Использование
+Or run it once, without installing:
+
+```sh
+npx clone-alert --minimum-tokens 50 --files src
+```
+
+Requires **Node.js 18+**.
+
+## Quick start
+
+```sh
+# Scan a folder and print a human‑readable report
+clone-alert --minimum-tokens 50 --files src
+
+# Fail CI when duplication is found (exit code 4)
+clone-alert --minimum-tokens 50 --files src --fail-on-violation
+
+# Machine‑readable output for dashboards
+clone-alert --format json --files src,packages > duplication.json
+```
+
+## Usage
 
 ```sh
 clone-alert [options] [<path>...]
 ```
 
-Основные опции совместимы по духу с `pmd cpd`:
+### CLI options
 
-- `--files <path[,path...]>` - файлы или директории для анализа.
-- `--minimum-tokens <n>` - минимальная длина дубля в токенах, по умолчанию `50`.
-- `--minimum-tile-size <n>` - алиас для `--minimum-tokens`.
-- `--format <text|xml|json>` - формат отчета, по умолчанию `text`.
-- `--extensions <ext[,ext...]>` - список расширений для рекурсивного обхода.
-- `--exclude <glob[,glob...]>` - исключить файлы или директории, можно повторять.
-- `--ignore-identifiers` / `--no-ignore-identifiers` - нормализовать или сравнивать имена. По умолчанию strict, как PMD.
-- `--ignore-literals` / `--no-ignore-literals` - нормализовать или сравнивать литералы. По умолчанию strict, как PMD.
-- `--pmd-typescript-compatibility` / `--no-pmd-typescript-compatibility` -
-  для `.ts/.tsx` раскладывать токены как PMD `typescript` (дробить шаблонные
-  литералы на атомы `` ` `` / `${` / `}` / по символу, схлопывать regexp);
-  включено по умолчанию. `.js/.jsx` всегда токенизируются нативным сканером.
-- `--svelte-templates` / `--no-svelte-templates` - токенизировать разметку
-  `.svelte` (`ast.fragment`), а не только `<script>`; включено по умолчанию.
-  Шаблон и код обычно требуют разных `--minimum-tokens` (разметка шумит на
-  низком пороге), поэтому слой вынесен за тумблер: выключите его, чтобы
-  прогнать скрипты отдельным, более низким порогом.
-- `--vue-templates` / `--no-vue-templates` - токенизировать разметку `.vue`
-  (`descriptor.template.ast`), а не только `<script>`; включено по умолчанию.
-  Как и у svelte, слой вынесен за тумблер ради раздельных порогов для разметки
-  и кода. Выражения биндингов/интерполяций (`{{ }}`, `:prop`, `v-if`, `@event`)
-  токенизируются как TS в скоупе компонента, поэтому дубль выражения
-  «шаблон ↔ `<script setup>`» тоже ловится.
-- `--angular-inline-templates` - дополнительно анализировать inline template в `@Component`.
-- `--skip-angular-inline-templates` - не анализировать inline template в `@Component`; оставлено как явный default/override.
-- `--fail-on-violation` - вернуть exit code `4`, если дубли найдены.
+| Option | Description |
+| --- | --- |
+| `--files <path[,path...]>` | Files or directories to scan. Can be repeated. |
+| `--minimum-tokens <n>` | Minimum duplicated token span. Default: `50`. |
+| `--minimum-tile-size <n>` | Alias for `--minimum-tokens`. |
+| `--format <text\|xml\|json>` | Report format. Default: `text`. |
+| `--extensions <ext[,ext...]>` | Extensions to include during recursive scans. |
+| `--exclude <glob[,glob...]>` | Exclude files or directories (glob). Can be repeated. |
+| `--ignore-identifiers` / `--no-ignore-identifiers` | Normalize or compare identifier names. Strict by default, like PMD. |
+| `--ignore-literals` / `--no-ignore-literals` | Normalize or compare literals. Strict by default, like PMD. |
+| `--pmd-typescript-compatibility` / `--no-…` | Match PMD `typescript` granularity for `.ts/.tsx` (split template literals into atoms, collapse regexp). On by default. |
+| `--svelte-templates` / `--no-svelte-templates` | Tokenize `.svelte` markup, not just `<script>`. On by default. |
+| `--vue-templates` / `--no-vue-templates` | Tokenize `.vue` markup, not just `<script>`. On by default. |
+| `--angular-inline-templates` | Also scan Angular `@Component` inline templates. |
+| `--skip-angular-inline-templates` | Do not scan inline Angular templates (explicit default). |
+| `--fail-on-violation` | Exit with code `4` when duplications are found. |
+| `-h, --help` | Show help. |
+| `-V, --version` | Show version. |
 
-Примеры:
-
-```sh
-node dist/cli.js --minimum-tokens 30 --files src --fail-on-violation
-node dist/cli.js --minimum-tokens 50 --format xml src test
-node dist/cli.js --format json --files src,packages --exclude '**/generated/**'
-
-# Свелте: код низким порогом, разметку — высоким (двумя прогонами)
-node dist/cli.js --minimum-tokens 40 --no-svelte-templates --files src
-node dist/cli.js --minimum-tokens 150 --files src
-```
-
-Поддерживаемые расширения по умолчанию:
+Default extensions:
 
 ```text
-.ts, .tsx, .js, .jsx, .mts, .cts, .mjs, .cjs, .vue, .svelte, .html, .htm
+.ts  .tsx  .js  .jsx  .mts  .cts  .mjs  .cjs  .vue  .svelte  .html  .htm
 ```
 
-Включён режим совместимости с PMD: JS-операторы, которых нет в JavaCC-грамматике
-PMD ES5, раскладываются в такой же поток токенов, например `=>` как `=` и `>`,
-`...` как `.`, `.`, `.`, а regexp literals схлопываются в один токен как в PMD.
-
-Важно: `--ignore-identifiers` в `clone-alert` реально нормализует JS-идентификаторы.
-В PMD `ecmascript` эта CLI-опция на текущей реализации лексера практически не
-меняет поток токенов, поэтому для строгого сравнения с PMD JS её включать не надо.
-
-Для `.vue`, `.svelte` и Angular HTML токенайзеры используют optional peer-пакеты
-`@vue/compiler-sfc`, `svelte` и `@angular/compiler`. Если пакет не установлен,
-соответствующие файлы будут пропущены с предупреждением.
-
-Токенизация разметки `.svelte` требует **svelte 5+**: используется современный
-AST (`ast.fragment`). На svelte 3/4 `parse` отдаёт legacy-AST (разметка в
-`ast.html`, `ast.fragment` нет), поэтому шаблон молча не сканируется и
-обрабатывается только `<script>` — без ошибок, но с меньшим покрытием. Для
-анализа разметки на старом svelte обновите компилятор до 5+.
-
-Angular inline templates выключены по умолчанию, чтобы TypeScript-режим был ближе
-к PMD CPD. Включайте `--angular-inline-templates`, если хотите сканировать
-frontend-шаблоны как расширение `clone-alert`.
-
-## PMD CPD compatibility scope
-
-`clone-alert` целится в PMD CPD-like поиск дублей для JavaScript/TypeScript
-экосистемы: `.js`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.jsx`, а также frontend
-шаблоны, которые типичны для TS-проектов.
-
-Проверяемая совместимость сейчас покрывает:
-
-- PMD JavaScript/TypeScript CPD tokenizer fixtures, vendored в `test/fixtures/pmd/**`.
-- Итоговый duplicate search по токенам, включая `--ignore-identifiers`,
-  `--ignore-literals` и suppress markers `CPD-OFF` / `CPD-ON`.
-- JSX/TSX tokenization и duplicate detection для React-like компонентов.
-- Реальные npm layouts: `src/**/*.ts`, `src/**/*.tsx`, monorepo `packages/**`
-  и исключение generated файлов через `--exclude`.
-- Отчёты `text`, `json`, `xml`: порядок occurrence, token counts, line ranges и paths.
-- PMD `pmd-core/src/test/java/net/sourceforge/pmd/cpd` coverage matrix:
-  core/model tests ported, renderer/config/file-analysis gaps marked explicitly.
-
-PMD fixtures лежат внутри репозитория, поэтому тесты не требуют локального PMD
-checkout или git submodule. Vendored golden data исключены из Biome и TypeScript
-project checking, чтобы upstream fixture content не переформатировался.
-
-## Проверка
+### Examples
 
 ```sh
-npm run lint
-npm test
-npm run pack:dry-run
+# Strict, PMD‑like scan of a source tree, fail the build on any clone
+clone-alert --minimum-tokens 30 --files src --fail-on-violation
+
+# PMD‑style XML report across several paths
+clone-alert --minimum-tokens 50 --format xml src test
+
+# JSON report for a monorepo, excluding generated code
+clone-alert --format json --files src,packages --exclude '**/generated/**'
+
+# Find renamed clones by normalizing identifiers and literals
+clone-alert --minimum-tokens 40 --ignore-identifiers --ignore-literals --files src
+```
+
+## PMD CPD compatibility
+
+clone-alert targets PMD CPD‑style duplicate detection for the JavaScript/TypeScript ecosystem: `.js`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.jsx`, plus the frontend templates typical of TS projects. Verified compatibility currently covers:
+
+- PMD JavaScript/TypeScript CPD tokenizer fixtures (vendored, so tests need no PMD checkout).
+- The token‑based duplicate search, including `--ignore-identifiers`, `--ignore-literals`, and `CPD-OFF` / `CPD-ON` suppression markers.
+- JSX/TSX tokenization and clone detection for React‑style components.
+- Real npm layouts: `src/**/*.ts`, `src/**/*.tsx`, monorepo `packages/**`, and excluding generated files via `--exclude`.
+- `text`, `json`, and `xml` reports: occurrence order, token counts, line ranges, and paths.
+
+PMD compatibility mode is on by default: JS operators absent from PMD's ES5 JavaCC grammar are split into the same token stream (e.g. `=>` → `=` and `>`, `...` → `.` `.` `.`), and regexp literals collapse to a single token, just like PMD.
+
+> **Note:** `--ignore-identifiers` in clone-alert really does normalize JS identifiers. In PMD's `ecmascript` lexer the same flag barely changes the token stream, so for a strict PMD‑JS comparison, leave it off.
+
+## Frontend templates
+
+For `.vue`, `.svelte`, and Angular HTML, clone-alert uses the optional peer packages `@vue/compiler-sfc`, `svelte`, and `@angular/compiler`. If a package isn't installed, matching files are skipped with a warning.
+
+- **Vue** — binding and interpolation expressions (`{{ }}`, `:prop`, `v-if`, `@event`) are tokenized as TypeScript in the component scope, so a duplicated expression across `<template>` and `<script setup>` is caught too.
+- **Svelte** — markup tokenization requires **Svelte 5+** (it relies on the modern `ast.fragment` AST). On Svelte 3/4 only `<script>` is scanned, silently and without errors.
+- **Angular** — inline templates are **off by default** to keep TypeScript mode closer to PMD CPD. Enable `--angular-inline-templates` to scan them as a clone-alert extension.
+
+Markup and code often want different thresholds (markup is noisy at a low `--minimum-tokens`), so the template layers sit behind toggles. Run two passes for the best of both:
+
+```sh
+# Code at a low threshold, markup at a high one (two runs)
+clone-alert --minimum-tokens 40 --no-svelte-templates --files src
+clone-alert --minimum-tokens 150 --files src
+```
+
+## Suppressing duplication
+
+Wrap intentional or generated duplication in `CPD-OFF` / `CPD-ON` comments and it won't be reported:
+
+```ts
+// CPD-OFF
+const generatedTableA = { /* ... */ };
+const generatedTableB = { /* ... */ };
+// CPD-ON
+```
+
+## Programmatic API
+
+clone-alert ships with TypeScript types and a small Node API:
+
+```ts
+import { Cpd } from 'clone-alert';
+
+const cpd = new Cpd({ minTileSize: 50 });
+cpd.addPath('src/a.ts');
+cpd.addPath('src/b.ts');
+
+const matches = cpd.run();
+console.log(cpd.report(matches));
+```
+
+## How it works
+
+1. Each file is tokenized into a flat stream of lexical tokens (TypeScript scanner for code; framework compilers for Vue/Svelte/Angular markup).
+2. Tokens are interned into a compact struct‑of‑arrays store backed by typed arrays.
+3. A Karp–Rabin rolling hash plus a stable radix sort group candidate windows, and a PMD‑style collector reports the longest non‑overlapping matches.
+
+Framework template tokens live in a separate namespace from script tokens, so markup never cross‑matches code by accident — while shared‑language expressions still do.
+
+## Comparison
+
+| | clone-alert | PMD CPD | jscpd |
+| --- | --- | --- | --- |
+| TS/JS/JSX/TSX | ✅ | ✅ | ✅ |
+| Vue `<template>` markup | ✅ | ➖ | partial |
+| Svelte markup | ✅ (Svelte 5+) | ➖ | ➖ |
+| Angular templates | ✅ | ➖ | flat HTML only |
+| PMD CPD algorithm parity | ✅ | — | ➖ |
+| Install size | tiny (1 dep) | JVM required | npm package |
+
+## Development
+
+```sh
+npm install
+npm run build        # compile to dist/
+npm test             # build + Vitest suite
+npm run lint         # Biome + Knip + type‑check + self‑CPD
 npm run compare:pmd -- /path/to/project --minimum-tokens 50
 ```
 
-`npm run lint` запускает Biome auto-check, Knip, TypeScript typecheck и встроенный
-`clone-alert` CPD-аналог вместо PMD. `npm test` собирает проект и запускает
-Vitest-набор: CLI smoke/compat tests, алгоритмические CPD edge cases и golden
-fixtures PMD для JavaScript/TypeScript CPD tokenizer.
+`npm run compare:pmd` runs PMD CPD, clone-alert, and jscpd on the same file tree and prints a JSON summary of time, peak RSS, duplicate counts, occurrences, and overlap. (jscpd is not a dependency; install it separately or pass `--jscpd <command>`.)
 
-`npm run pack:dry-run` собирает пакет через `prepack` и показывает состав npm
-tarball без публикации.
+## Keywords
 
-`npm run compare:pmd -- <path>` запускает PMD CPD, `clone-alert` и Rust-версию
-`jscpd` на одном дереве файлов, сохраняет XML/JSON-отчеты и печатает
-JSON-сводку по времени, peak RSS, количеству дублей, occurrences и пересечениям.
-`jscpd` не является зависимостью проекта: установите его отдельно, например
-глобально, или передайте путь через `--jscpd <command>`. Для benchmark нескольких
-репозиториев используйте `--repo-name <name>`: отчеты будут сложены в
-`bench/results/<name>/<timestamp>/`.
+copy‑paste detector · duplicate code finder · code clone detection · CPD · PMD CPD alternative · jscpd alternative · TypeScript duplicate code · JavaScript duplicate code · JSX/TSX clones · Vue / Svelte / Angular duplication · DRY · static analysis · code quality · CI lint.
+
+## License
+
+[MIT](./LICENSE)

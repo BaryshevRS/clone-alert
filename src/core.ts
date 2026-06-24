@@ -1,28 +1,42 @@
-// core.ts
-// Ядро CPD, language-agnostic. Работает с плоским потоком токенов.
-// Токены поставляют токенайзеры (см. tokenizers.ts) в виде RawToken[].
-//
-// Хранение токенов — struct-of-arrays на типизированных массивах (Int32Array):
-// вместо ~N объектов TokenEntry держим параллельные числовые колонки. Полноценные
-// TokenEntry материализуются лениво только для марок, попавших в матчи.
+/**
+ * Language-agnostic CPD core. Operates on a flat stream of tokens supplied by
+ * the tokenizers (see tokenizers.ts) as `RawToken[]`.
+ *
+ * Token storage is struct-of-arrays over typed arrays (`Int32Array`): instead of
+ * ~N `TokenEntry` objects we keep parallel numeric columns. Full `TokenEntry`
+ * objects are materialized lazily, only for the marks that land in a match.
+ *
+ * @packageDocumentation
+ */
 
-// Сентинелы нормализации. Префикс из private-use области Unicode,
-// чтобы гарантированно не пересекаться с реальными образами исходника.
+/**
+ * Normalization sentinel prefix, taken from the Unicode private-use area so it
+ * is guaranteed never to collide with real source token images. Framework token
+ * namespaces (Angular/Vue/Svelte) live in their own extension modules
+ * (src/angular.ts, etc.) and are built on top of this shared sentinel.
+ */
 export const S = '\uE000';
-export const TS_ID = `${S}ID`; // нормализованный идентификатор (TS)
-export const TS_LIT = `${S}LIT`; // нормализованный литерал (TS)
-// Токены конкретных фреймворков (Angular/Vue/Svelte) живут в своих модулях-
-// расширениях (src/angular.ts и т.д.) и строятся поверх общего сентинела S.
+/** Normalized identifier (TS). */
+export const TS_ID = `${S}ID`;
+/** Normalized literal (TS). */
+export const TS_LIT = `${S}LIT`;
 
+/** A raw token as emitted by a tokenizer, before it is interned into the core. */
 export interface RawToken {
     image: string;
-    line: number; // 1-based
-    column: number; // 1-based
-    endLine?: number; // 1-based, PMD-style token end position
-    endColumn?: number; // 1-based, PMD-style exclusive end column
-    barrier?: boolean; // принудительный разрыв (вставит EOF-токен с id 0)
+    /** 1-based. */
+    line: number;
+    /** 1-based. */
+    column: number;
+    /** 1-based, PMD-style token end position. */
+    endLine?: number;
+    /** 1-based, PMD-style exclusive end column. */
+    endColumn?: number;
+    /** Forced break; inserts an EOF token (id 0) so matches cannot span it. */
+    barrier?: boolean;
 }
 
+/** A fully materialized token with its image, interned id, and source location. */
 export class TokenEntry {
     constructor(
         public image: string,
@@ -36,16 +50,20 @@ export class TokenEntry {
     ) {}
 }
 
+/** A single occurrence of a duplicated span, anchored at its starting token. */
 export class Mark {
     constructor(public token: TokenEntry) {}
 }
 
+/** A set of marks that share an identical duplicated token span. */
 export class Match {
-    // Дедуп по индексу токена (PMD использует TreeSet по index, а не по ссылке).
+    /** Dedupe by token index (PMD uses a TreeSet keyed by index, not by reference). */
     private markMap = new Map<number, Mark>();
-    // Кэш отсортированных марок. Геттер marks дёргается в горячем reportMatch
-    // миллионы раз; без кэша каждый вызов делал Array.from + sort. Инвалидируется
-    // только в addMark, т.е. когда состав марок реально меняется.
+    /**
+     * Cache of sorted marks. The `marks` getter is hit millions of times in the
+     * hot reportMatch path; without the cache every call did Array.from + sort.
+     * Invalidated only in addMark, i.e. when the mark set actually changes.
+     */
     private marksSorted: Mark[] | null = null;
 
     constructor(
@@ -76,9 +94,10 @@ export class Match {
     }
 }
 
+/** The duplicate-detection engine: ingests token streams and reports matches. */
 export class CpdCore {
-    // Колонки токенов (struct-of-arrays). Растут геометрически в ensureCapacity().
-    private ids = new Int32Array(0); // интернированный image; 0 == EOF/барьер
+    // Token columns (struct-of-arrays). Grown geometrically in ensureCapacity().
+    private ids = new Int32Array(0); // interned image; 0 == EOF/barrier
     private fileIds = new Int32Array(0);
     private beginLines = new Int32Array(0);
     private beginColumns = new Int32Array(0);
@@ -87,7 +106,7 @@ export class CpdCore {
     private size = 0;
     private capacity = 0;
 
-    // Таблицы интернирования: id -> строка. idImages[0] == '' (EOF).
+    // Interning tables: id -> string. idImages[0] == '' (EOF).
     private imageToId = new Map<string, number>();
     private idImages: string[] = [''];
     private fileToId = new Map<string, number>();
@@ -139,7 +158,7 @@ export class CpdCore {
         this.endColumns[i] = ec;
     }
 
-    /** Добавить поток токенов одного файла. В конце всегда вставляется EOF-барьер. */
+    /** Add one file's token stream. An EOF barrier is always appended at the end. */
     public addFile(file: string, raw: RawToken[]) {
         const fileId = this.fileId(file);
         this.ensureCapacity(raw.length + 1);
@@ -164,12 +183,12 @@ export class CpdCore {
         return this.size;
     }
 
-    /** Сырой доступ к колонке id для горячих циклов сборщика (внутри модуля). */
+    /** Raw access to the id column for the collector's hot loops (module-internal). */
     public get idColumn(): Int32Array {
         return this.ids;
     }
 
-    /** Материализовать TokenEntry по абсолютному индексу. undefined вне диапазона. */
+    /** Materialize a TokenEntry by absolute index. Returns undefined when out of range. */
     public entryAt(index: number): TokenEntry | undefined {
         if (index < 0 || index >= this.size) return undefined;
         const id = this.ids[index];
@@ -191,13 +210,14 @@ export class CpdCore {
         const { markIndices, markHashes, markCount } = this.hash();
         if (markCount === 0) return [];
 
-        // Группировка по равному хешу. Раньше — comparator-сортировка boxed number[],
-        // самый дорогой кусок ядра (O(n log n) с мегаморфным замыканием на 3.4M).
-        // Теперь — стабильный LSD radix sort по 32-битному хешу на Uint32Array:
-        // O(n) линейных проходов, без замыканий и boxing. markIndices строго
-        // убывает (hash() идёт справа налево), поэтому стартовая перестановка по
-        // возрастанию index — это разворот; стабильность radix сохраняет
-        // возрастание index внутри равного хеша (требование MatchCollector.collect).
+        // Group by equal hash. This used to be a comparator sort over a boxed
+        // number[] — the most expensive part of the core (O(n log n) with a
+        // megamorphic closure over 3.4M items). Now it is a stable LSD radix sort
+        // by the 32-bit hash on a Uint32Array: O(n) linear passes, no closures, no
+        // boxing. markIndices is strictly decreasing (hash() walks right-to-left),
+        // so the initial permutation by ascending index is a reversal; radix
+        // stability preserves ascending index within an equal hash (required by
+        // MatchCollector.collect).
         const order = radixSortByHash(markHashes, markCount);
 
         const collector = new MatchCollector(this, this.minTileSize);
@@ -207,7 +227,7 @@ export class CpdCore {
             let end = start + 1;
             while (end < markCount && markHashes[order[end]] === h) end++;
             if (end - start > 1) {
-                // Прогон уже отсортирован по возрастанию index (tie-break сортировки).
+                // The run is already sorted by ascending index (the sort tie-break).
                 const group = new Int32Array(end - start);
                 for (let k = start; k < end; k++) group[k - start] = markIndices[order[k]];
                 collector.collect(group);
@@ -217,8 +237,8 @@ export class CpdCore {
 
         const matches = collector.getMatches();
 
-        // Детерминированный порядок отчёта. На детекцию не влияет.
-        // Для построчного дифф-теста с PMD лучше сортировать обе выгрузки по (file,line).
+        // Deterministic report order. Does not affect detection. For a line-by-line
+        // diff against PMD, sort both dumps by (file, line) instead.
         matches.sort((a, b) => {
             const byLen = b.tokenCount - a.tokenCount;
             if (byLen !== 0) return byLen;
@@ -230,11 +250,11 @@ export class CpdCore {
         return matches;
     }
 
-    // Karp-Rabin, скользящее окно справа налево. Вся арифметика 32-bit (| 0 / Math.imul),
-    // иначе float64 даст хеши, отличные от Java-оригинала.
+    // Karp-Rabin sliding window, right-to-left. All arithmetic is 32-bit (| 0 /
+    // Math.imul); float64 would produce hashes different from the Java original.
     //
-    // Возвращает параллельные колонки (индекс токена, его хеш) в порядке убывания
-    // index — тот же набор марок, что раскладывался по бакетам в Java-оригинале.
+    // Returns parallel columns (token index, its hash) ordered by descending index
+    // — the same mark set the Java original distributed across buckets.
     private hash(): { markIndices: Int32Array; markHashes: Int32Array; markCount: number } {
         const ids = this.ids;
         const n = this.size;
@@ -260,8 +280,9 @@ export class CpdCore {
                 markHashes[m] = lastHash;
                 m++;
             } else {
-                // EOF/барьер: сбрасываем хеш и пропускаем minTileSize-1 позиций перед ним
-                // (их окна пересекали бы границу). Прогрев двигает ВНЕШНИЙ i.
+                // EOF/barrier: reset the hash and skip the minTileSize-1 positions
+                // before it (their windows would cross the boundary). The warm-up
+                // advances the OUTER i.
                 lastHash = 0;
                 const end = Math.max(0, i - this.minTileSize + 1);
                 for (; i > end; i--) {
@@ -281,15 +302,15 @@ function growInt32(src: Int32Array, capacity: number): Int32Array<ArrayBuffer> {
     return dst;
 }
 
-// Стабильный LSD radix sort перестановки [0..count) по ключу markHashes[pos].
-// Порядок — по ВОЗРАСТАНИЮ знакового хеша; при равном хеше стабильность
-// сохраняет порядок стартовой перестановки. Стартуем с позиций по убыванию
-// (count-1..0): т.к. markHashes/markIndices идут по убыванию token-index,
-// это даёт возрастание index внутри каждой группы равного хеша.
-// 4 прохода по байту вместо O(n log n) comparator на boxed number[].
+// Stable LSD radix sort of the permutation [0..count) by key markHashes[pos].
+// Order is by ascending signed hash; on equal hashes stability preserves the
+// order of the starting permutation. We start from positions in descending order
+// (count-1..0): because markHashes/markIndices run by descending token index,
+// this yields ascending index within every equal-hash group. 4 byte passes
+// instead of an O(n log n) comparator over a boxed number[].
 function radixSortByHash(markHashes: Int32Array, count: number): Uint32Array {
-    // Знаковый int32 -> монотонный uint32 (флип старшего бита), чтобы
-    // байтовый radix давал корректный знаковый порядок.
+    // Signed int32 -> monotonic uint32 (flip the top bit) so the byte-wise radix
+    // produces a correct signed order.
     const keys = new Uint32Array(count);
     for (let i = 0; i < count; i++) keys[i] = (markHashes[i] ^ 0x80000000) >>> 0;
 
@@ -313,8 +334,9 @@ function radixSortByHash(markHashes: Int32Array, count: number): Uint32Array {
     return src;
 }
 
-// Перенос MatchCollector.java без изменений в алгоритме (он корректен).
-// Марки представлены абсолютным индексом токена (number); позиции и id берутся из SoA.
+// Port of MatchCollector.java with no change to the algorithm (it is correct).
+// Marks are represented by the absolute token index (number); positions and ids
+// are read from the SoA columns.
 class MatchCollector {
     private matchTree = new Map<number, Match[]>();
     private tokenMatchSets = new Map<number, Set<number>>();
@@ -351,7 +373,7 @@ class MatchCollector {
                     continue;
                 }
                 if (diff + dupes >= 1) {
-                    continue; // самоперекрытие
+                    continue; // self-overlap
                 }
                 this.reportMatch(mark1, mark2, dupes);
             }
@@ -384,9 +406,9 @@ class MatchCollector {
                 if (otherEnd === mark1) continue;
 
                 if (otherEnd < mark2 && otherEnd + m.tokenCount >= mark2 + dupes) {
-                    return; // вложен в существующий
+                    return; // nested inside an existing match
                 } else if (mark2 < otherEnd && mark2 + dupes >= otherEnd + m.tokenCount) {
-                    matches.splice(i, 1); // заменяем
+                    matches.splice(i, 1); // replace it
                     i--;
                     break;
                 } else if (dupes === m.tokenCount) {
@@ -403,8 +425,8 @@ class MatchCollector {
         this.registerTokenMatch(mark1, mark2);
     }
 
-    // Материализация TokenEntry для марки. Индекс гарантированно в диапазоне
-    // (марки приходят из потока токенов), поэтому undefined здесь невозможен.
+    // Materialize a TokenEntry for a mark. The index is guaranteed in range (marks
+    // come from the token stream), so undefined is impossible here.
     private entry(index: number): TokenEntry {
         const entry = this.ma.entryAt(index);
         if (!entry) throw new Error(`token index out of range: ${index}`);
@@ -448,8 +470,9 @@ class MatchCollector {
         return index;
     }
 
-    // true, если окна разошлись: один из индексов вне диапазона, id не совпали,
-    // либо это EOF (id === 0). Эквивалент matchEnded(token1, token2) на TokenEntry.
+    // True once the windows diverge: one of the indices is out of range, the ids
+    // differ, or it is EOF (id === 0). Equivalent to matchEnded(token1, token2) on
+    // TokenEntry.
     private matchEnded(a: number, b: number): boolean {
         if (a < 0 || b < 0 || a >= this.tokenCount || b >= this.tokenCount) return true;
         const id1 = this.ids[a];

@@ -1,27 +1,35 @@
-// angular.ts
-// Расширение-токенайзер для Angular-шаблонов (внешние .html и inline @Component).
-// Стоит поверх общего слоя из tokenizers.ts (optional/moduleResolveDirs/remap)
-// и общего сентинела S из core.ts. Ядро (core.ts) про Angular ничего не знает.
+/**
+ * Tokenizer extension for Angular templates (external `.html` and inline
+ * `@Component`). Built on top of the shared layer in tokenizers.ts
+ * (optional/moduleResolveDirs/remap) and the shared sentinel `S` from core.ts.
+ * The core (core.ts) knows nothing about Angular.
+ *
+ * @packageDocumentation
+ */
 import * as ts from 'typescript';
 import { type RawToken, S } from './core';
 import { DEFAULTS, moduleResolveDirs, optional, remap, type TokenizeOptions } from './tokenizers';
 
-// Пространство имён токенов шаблонных выражений Angular. Префикс S гарантирует,
-// что эти образы не пересекаются со script-токенами (никаких кросс-матчей .ts<->шаблон).
-const NG = `${S}NG:`; // префикс для структурных маркеров/имён выражений
-const NG_ID = `${S}NGID`; // нормализованный идентификатор шаблона (ignoreIdentifiers)
-const NG_LIT = `${S}NGLIT`; // нормализованный литерал шаблона (ignoreLiterals)
-const NG_TEXT = `${S}NGTEXT`; // статический текст шаблона
+// Token namespace for Angular template expressions. The S prefix guarantees these
+// images never collide with script tokens (no .ts<->template cross-matches).
+const NG = `${S}NG:`; // prefix for structural markers / expression names
+const NG_ID = `${S}NGID`; // normalized template identifier (ignoreIdentifiers)
+const NG_LIT = `${S}NGLIT`; // normalized template literal (ignoreLiterals)
+const NG_TEXT = `${S}NGTEXT`; // static template text
 
 let warnedNg = false;
 
-// --- Angular HTML-шаблон (внешний .html или inline) ---
-// Токенайзер двух уровней: (1) структура — теги, имена атрибутов, статический
-// текст; (2) выражения биндингов/интерполяций/блоков — обход AST @angular/compiler
-// с той же нормализацией id/литералов, что и в script. Все образы S-префиксованы
-// (см. NG/NG_ID/NG_LIT) => кросс-матчей со script-токенами нет.
-// Позиции под-токенов выражения наследуются от объемлющего узла (хост): матчинг
-// точный, гранулярность отчёта — на уровне строки биндинга (line-map не строим).
+/**
+ * Tokenize an Angular HTML template (external `.html` or inline). Two layers:
+ * (1) structure — tags, attribute names, static text; (2) binding/interpolation/
+ * block expressions — an AST walk over @angular/compiler with the same id/literal
+ * normalization as in script. All images are S-prefixed (see NG/NG_ID/NG_LIT) so
+ * there are no cross-matches with script tokens.
+ *
+ * Expression sub-token positions are inherited from the enclosing (host) node:
+ * matching is exact, report granularity is at the binding-line level (no line map
+ * is built).
+ */
 export function tokenizeAngularHtml(
     filePath: string,
     template: string,
@@ -32,7 +40,7 @@ export function tokenizeAngularHtml(
     const ngc = optional('@angular/compiler', moduleResolveDirs(filePath));
     if (!ngc || typeof ngc.parseTemplate !== 'function') {
         if (!warnedNg) {
-            console.warn('[cpd] Angular-шаблон пропущен: установите @angular/compiler');
+            console.warn('[cpd] Angular template skipped: install @angular/compiler');
             warnedNg = true;
         }
         return [];
@@ -55,10 +63,10 @@ export function tokenizeAngularHtml(
     const emitLit = (value: unknown, host: any) =>
         emit(o.ignoreLiterals ? NG_LIT : `${NG}lit:${JSON.stringify(value)}`, host);
 
-    // Обход выражения биндинга. host — структурный узел, чьи координаты наследуем.
+    // Walk a binding expression. host is the structural node whose coordinates we inherit.
     const walkExpr = (ast: any, host: any) => {
         if (ast == null || typeof ast !== 'object') return;
-        // ASTWithSource — обёртка; разворачиваем до фактического выражения.
+        // ASTWithSource is a wrapper; unwrap it down to the actual expression.
         if (ast.ast && typeof ast.ast === 'object') return walkExpr(ast.ast, host);
 
         switch (ast.constructor?.name) {
@@ -139,7 +147,7 @@ export function tokenizeAngularHtml(
                 return;
             case 'ImplicitReceiver':
             case 'EmptyExpr':
-                return; // корневой контекст компонента — токен не нужен
+                return; // root component context — no token needed
         }
     };
 
@@ -149,7 +157,7 @@ export function tokenizeAngularHtml(
             for (const item of items ?? []) walk(item);
         };
 
-        // Все коллекции биндингов узла (общие для Element и Template/ng-template).
+        // All of a node's binding collections (common to Element and Template/ng-template).
         const walkBindings = (n: any) => {
             walkAll(n.attributes);
             walkAll(n.inputs);
@@ -158,15 +166,15 @@ export function tokenizeAngularHtml(
             walkAll(n.references);
         };
 
-        // Element (есть имя тега + дети)
+        // Element (has a tag name + children)
         if (typeof node.name === 'string' && Array.isArray(node.children)) {
             emit(`${NG}<${node.name}`, node);
             walkBindings(node);
             walkAll(node.children);
             return;
         }
-        // Контейнеры: ng-template, control-flow блоки (@if/@for/@switch/@defer).
-        // node.expression тянет и листовые блоки без детей (@case (…) -> SwitchBlockCase).
+        // Containers: ng-template, control-flow blocks (@if/@for/@switch/@defer).
+        // node.expression also catches leaf blocks without children (@case (…) -> SwitchBlockCase).
         if (
             Array.isArray(node.children) ||
             Array.isArray(node.branches) ||
@@ -175,7 +183,7 @@ export function tokenizeAngularHtml(
             node.expression
         ) {
             if (typeof node.tagName === 'string') emit(`${NG}<${node.tagName}`, node);
-            // Управляющие выражения блоков (@for of …; track …; @if/@case (…)).
+            // Block control expressions (@for of …; track …; @if/@case (…)).
             if (node.expression) {
                 emit(`${NG}@expr`, node);
                 walkExpr(node.expression, node);
@@ -185,8 +193,8 @@ export function tokenizeAngularHtml(
                 walkExpr(node.trackBy, node);
             }
             walkBindings(node);
-            walkAll(node.templateAttrs); // *ngIf / *ngFor микросинтаксис
-            walkAll(node.variables); // let-… на ng-template
+            walkAll(node.templateAttrs); // *ngIf / *ngFor microsyntax
+            walkAll(node.variables); // let-… on ng-template
             walkAll(node.item ? [node.item] : undefined);
             walkAll(node.children);
             walkAll(node.branches);
@@ -195,8 +203,8 @@ export function tokenizeAngularHtml(
             walk(node.empty);
             return;
         }
-        // Атрибут / input / output / reference / variable: имя структурно,
-        // значение/handler — выражение (если есть), статика — литерал.
+        // Attribute / input / output / reference / variable: the name is structural,
+        // the value/handler is an expression (if any), static is a literal.
         if (typeof node.name === 'string') {
             emit(`${NG}@${node.name}`, node);
             if (node.value && typeof node.value === 'object') walkExpr(node.value, node);
@@ -204,12 +212,12 @@ export function tokenizeAngularHtml(
             if (node.handler && typeof node.handler === 'object') walkExpr(node.handler, node);
             return;
         }
-        // BoundText / интерполяция (value это AST-выражение)
+        // BoundText / interpolation (value is an AST expression)
         if (node.value && typeof node.value === 'object') {
             walkExpr(node.value, node);
             return;
         }
-        // Статический текст
+        // Static text
         if (typeof node.value === 'string') {
             if (node.value.trim().length) emit(NG_TEXT, node);
             return;
@@ -220,7 +228,7 @@ export function tokenizeAngularHtml(
     return local.map((t) => remap(t, base.line, base.col));
 }
 
-// --- Извлечение inline-шаблонов из @Component({ template: `...` }) ---
+/** Extract inline templates from `@Component({ template: \`...\` })`. */
 export function extractAngularInlineTemplates(
     filePath: string,
     source: string
@@ -239,7 +247,7 @@ export function extractAngularInlineTemplates(
                     if (p.name.text !== 'template') continue;
                     const init = p.initializer;
                     if (ts.isStringLiteralLike(init)) {
-                        // позиция первого символа содержимого (после кавычки/бэктика)
+                        // position of the first content char (after the quote/backtick)
                         const contentStart = init.getStart(sf) + 1;
                         const { line, character } = sf.getLineAndCharacterOfPosition(contentStart);
                         result.push({ code: init.text, line: line + 1, col: character + 1 });

@@ -1,4 +1,10 @@
-// index.ts
+/**
+ * Public entry point. The {@link Cpd} facade dispatches each source by extension
+ * to the right tokenizer, feeds the tokens to {@link CpdCore}, and materializes
+ * match locations for reporting.
+ *
+ * @packageDocumentation
+ */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { extractAngularInlineTemplates, tokenizeAngularHtml } from './angular';
@@ -11,7 +17,7 @@ export { Mark, Match, TokenEntry } from './core';
 
 export interface CpdOptions extends TokenizeOptions {
     minTileSize?: number;
-    /** Извлекать inline-шаблоны из @Component для .ts (по умолчанию false). */
+    /** Extract inline templates from `@Component` for `.ts` files (default: false). */
     angularInlineTemplates?: boolean;
 }
 
@@ -27,6 +33,7 @@ const TS_EXT = new Set(['.ts', '.mts', '.cts']);
 const JSX_EXT = new Set(['.tsx', '.jsx', '.js', '.mjs', '.cjs']);
 const HTML_EXT = new Set(['.html', '.htm']);
 
+/** High-level copy-paste detector: add sources, then {@link run} to get matches. */
 export class Cpd {
     private core: CpdCore;
     private opts: Required<CpdOptions>;
@@ -91,12 +98,12 @@ export class Cpd {
         }
 
         if (HTML_EXT.has(ext)) {
-            // Внешний Angular-шаблон (обычный HTML тоже парсится).
+            // External Angular template (plain HTML parses too).
             this.core.addFile(filePath, tokenizeAngularHtml(filePath, source, { line: 1, col: 1 }, tok));
             return;
         }
 
-        // неизвестное расширение игнорируем
+        // Unknown extension: ignore.
     }
 
     public run(): Match[] {
@@ -115,7 +122,7 @@ export class Cpd {
         };
     }
 
-    /** Простой текстовый отчёт для глазной проверки / дифф-теста. */
+    /** Plain text report for eyeballing / diff tests. */
     public report(matches: Match[] = this.run()): string {
         const lines: string[] = [];
         for (const m of matches) {
@@ -131,7 +138,7 @@ export class Cpd {
     }
 }
 
-// Пример:
+// Example:
 //   const cpd = new Cpd({ minTileSize: 50 });
 //   for (const f of files) cpd.addPath(f);
 //   console.log(cpd.report());

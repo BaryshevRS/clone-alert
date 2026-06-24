@@ -1,9 +1,14 @@
-// tokenizers.ts
+/**
+ * The TypeScript/JavaScript tokenizer plus the shared helpers used by every
+ * framework tokenizer extension (`optional`, `moduleResolveDirs`, `remap`).
+ *
+ * @packageDocumentation
+ */
 import * as ts from 'typescript';
 import { type RawToken, TS_ID, TS_LIT } from './core';
 
-// ESM-пользователям: заменить require на createRequire(import.meta.url)
-// или сделать функции async с dynamic import.
+// ESM users: replace require with createRequire(import.meta.url), or make the
+// functions async and use dynamic import.
 declare const require: {
     (name: string): any;
     resolve: (name: string, options?: { paths?: string[] }) => string;
@@ -12,18 +17,18 @@ declare const require: {
 export interface TokenizeOptions {
     ignoreIdentifiers?: boolean;
     ignoreLiterals?: boolean;
-    /** Дробить токены TS-файлов под PMD typescript (шаблоны, regexp). Только .ts/.tsx. */
+    /** Split TS-file tokens to match PMD typescript (templates, regexp). `.ts/.tsx` only. */
     pmdTypescriptCompatibility?: boolean;
     /**
-     * Токенизировать разметку .svelte (ast.fragment), а не только <script>.
-     * Шаблон и скрипт обычно требуют разных порогов --minimum-tokens, поэтому
-     * слой выносится за тумблер: выключи, чтобы прогнать скрипты отдельно.
+     * Tokenize `.svelte` markup (ast.fragment), not just `<script>`. Markup and
+     * script usually want different `--minimum-tokens` thresholds, so this is put
+     * behind a toggle: turn it off to scan scripts on their own.
      */
     svelteTemplates?: boolean;
     /**
-     * Токенизировать разметку .vue (descriptor.template.ast), а не только
-     * <script>. Аналогично svelteTemplates — слой за тумблером ради раздельных
-     * порогов --minimum-tokens для шаблона и кода.
+     * Tokenize `.vue` markup (descriptor.template.ast), not just `<script>`. Like
+     * svelteTemplates, this layer sits behind a toggle so markup and code can run
+     * at separate `--minimum-tokens` thresholds.
      */
     vueTemplates?: boolean;
 }
@@ -36,11 +41,13 @@ export const DEFAULTS: Required<TokenizeOptions> = {
     vueTemplates: true,
 };
 
-// Опциональный компилятор (@angular/compiler, @vue/compiler-sfc, svelte) —
-// peerDependency. Резолвим СНАЧАЛА от анализируемого файла вверх по дереву
-// (берём компилятор той версии, что стоит в сканируемом проекте), и лишь
-// потом падаем на собственные node_modules clone-alert. fromPaths обычно =
-// [dirname(filePath)] — Node поднимается по node_modules от этой точки.
+/**
+ * Load an optional compiler (`@angular/compiler`, `@vue/compiler-sfc`, `svelte`)
+ * — a peerDependency. Resolution starts FROM the analyzed file and walks up the
+ * tree (so we use the compiler version installed in the scanned project), and
+ * only then falls back to clone-alert's own node_modules. `fromPaths` is usually
+ * `[dirname(filePath)]`; Node climbs node_modules from there.
+ */
 export function optional<T = any>(name: string, fromPaths?: string[]): T | null {
     try {
         const id = require.resolve(name, fromPaths && fromPaths.length ? { paths: fromPaths } : undefined);
@@ -57,16 +64,21 @@ export function optional<T = any>(name: string, fromPaths?: string[]): T | null 
     }
 }
 
-// Стартовая точка для резолва peer-компилятора: каталог анализируемого файла.
-// Node сам пройдёт node_modules вверх до корня проекта.
+/**
+ * Starting point for resolving a peer compiler: the directory of the analyzed
+ * file. Node walks up node_modules from there to the project root.
+ */
 export function moduleResolveDirs(filePath: string): string[] {
     const slash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
     return slash > 0 ? [filePath.slice(0, slash)] : [];
 }
 
-// --- Ремаппинг позиций встроенного блока в координаты файла ---
-// Токены блока считаются от (0,0) внутри блока; baseLine/baseCol (1-based) дают
-// абсолютную позицию начала блока. Сдвиг по столбцу только для первой строки блока.
+/**
+ * Remap an embedded block's positions into file coordinates. Block tokens are
+ * counted from (0,0) within the block; baseLine/baseCol (1-based) give the
+ * absolute start of the block. The column shift applies only to the block's
+ * first line.
+ */
 export function remap(tok: RawToken, baseLine: number, baseCol: number): RawToken {
     const firstLine = tok.line === 1;
     const endFirstLine = (tok.endLine ?? tok.line) === 1;
@@ -80,8 +92,10 @@ export function remap(tok: RawToken, baseLine: number, baseCol: number): RawToke
     };
 }
 
-// --- TS / TSX / JSX через scanner ---
-// CPD считает поток лексических токенов, включая keywords и punctuation.
+/**
+ * Tokenize TS / TSX / JSX via the TypeScript scanner. CPD counts the stream of
+ * lexical tokens, including keywords and punctuation.
+ */
 export function tokenizeTypeScript(
     filePath: string,
     source: string,
@@ -89,9 +103,9 @@ export function tokenizeTypeScript(
     scriptKind: ts.ScriptKind = ts.ScriptKind.TS
 ): RawToken[] {
     const o = { ...DEFAULTS, ...opts };
-    // Раньше тут был полный ts.createSourceFile (парс в AST) только ради маппинга
-    // позиций. AST не нужен — берём ту же line-map, что TS строит под капотом
-    // getLineAndCharacterOfPosition, без парсинга. См. createLineMap.
+    // This used to call ts.createSourceFile (a full AST parse) only to map
+    // positions. The AST is not needed — we use the same line map TS builds under
+    // the hood for getLineAndCharacterOfPosition, without parsing. See createLineMap.
     const sf = createLineMap(source);
     const suppressedRanges = findCpdSuppressedRanges(source);
     const scanner = ts.createScanner(
@@ -121,7 +135,7 @@ export function tokenizeTypeScript(
                 return o.ignoreLiterals ? TS_LIT : normalizeStringContinuation(text);
             case ts.SyntaxKind.JsxText: {
                 const t = text.trim();
-                if (!t) return null; // пустой JSX-текст выкидываем
+                if (!t) return null; // drop empty JSX text
                 return o.ignoreLiterals ? TS_LIT : t;
             }
             default:
@@ -129,15 +143,15 @@ export function tokenizeTypeScript(
         }
     };
 
-    // Режим совместимости с PMD typescript включается только для TS-файлов.
-    // .ts/.tsx (флаг ВКЛ): шаблон дробится на PMD-typescript-атомы (backtick /
-    // ${ / } / по символу текста — grammar TypeScriptLexer.g4 TemplateStringAtom:
-    // ~[`\\]) и схлопывается regexp. .js/.jsx или флаг ВЫКЛ — нативный сканер
-    // (шаблон = один токен, никакого pmd-причёсывания).
+    // PMD typescript compatibility is enabled only for TS files. .ts/.tsx (flag
+    // ON): templates are split into PMD-typescript atoms (backtick / ${ / } / one
+    // per text char — grammar TypeScriptLexer.g4 TemplateStringAtom: ~[`\\]) and
+    // regexp is collapsed. .js/.jsx, or flag OFF: the native scanner (a template
+    // is one token, no PMD massaging).
     const pmdTypeScript = o.pmdTypescriptCompatibility && isTypeScriptFile(filePath, scriptKind);
     const splitTemplates = pmdTypeScript;
-    // Глубина фигурных скобок внутри каждой активной интерполяции ${…}. На нуле
-    // очередная `}` закрывает интерполяцию -> пересканируем в TemplateMiddle/Tail.
+    // Brace depth inside each active ${…} interpolation. At zero, the next `}`
+    // closes the interpolation -> rescan it as TemplateMiddle/Tail.
     const templateBraceDepth: number[] = [];
     const bumpTemplateDepth = (kind: ts.SyntaxKind) => {
         if (!splitTemplates) return;
@@ -164,7 +178,7 @@ export function tokenizeTypeScript(
         let kind = scanner.scan();
         if (kind === ts.SyntaxKind.EndOfFileToken) break;
 
-        // Закрывающая `}` интерполяции: пересканируем её как продолжение шаблона.
+        // Closing `}` of an interpolation: rescan it as a template continuation.
         if (
             splitTemplates &&
             kind === ts.SyntaxKind.CloseBraceToken &&
@@ -176,7 +190,7 @@ export function tokenizeTypeScript(
 
         const tokenStart = scanner.getTokenPos();
         if (isSuppressed(tokenStart, suppressedRanges)) {
-            bumpTemplateDepth(kind); // держим стек в синхроне сквозь CPD-OFF
+            bumpTemplateDepth(kind); // keep the stack in sync through CPD-OFF
             continue;
         }
 
@@ -184,7 +198,7 @@ export function tokenizeTypeScript(
             kind = scanner.reScanSlashToken();
         }
 
-        // typescript-режим: дробим часть шаблона на атомы PMD.
+        // typescript mode: split part of the template into PMD atoms.
         if (splitTemplates && isTemplatePart(kind)) {
             bumpTemplateDepth(kind);
             for (const atom of expandTemplateSpan(source, sf, tokenStart, scanner.getTextPos(), o)) {
@@ -194,7 +208,7 @@ export function tokenizeTypeScript(
             continue;
         }
 
-        // нативный режим: весь шаблон с подстановками = один токен.
+        // native mode: the whole template with substitutions is one token.
         if (!splitTemplates && kind === ts.SyntaxKind.TemplateHead) {
             const templateEnd = findTemplateLiteralEnd(source, tokenStart);
             scanner.setTextPos(templateEnd);
@@ -211,7 +225,7 @@ export function tokenizeTypeScript(
             continue;
         }
 
-        bumpTemplateDepth(kind); // баланс { } внутри интерполяции
+        bumpTemplateDepth(kind); // balance { } inside an interpolation
 
         const image = normalize(kind, normalizeStringContinuation(scanner.getTokenText()));
         if (image === null) continue;
@@ -259,8 +273,8 @@ function canStartPmdRegexpLiteral(previousKind: ts.SyntaxKind | null): boolean {
     }
 }
 
-// PMD typescript-совместимость применяется только к TS-файлам; .js/.jsx идут
-// нативным сканером без pmd-причёсывания.
+// PMD typescript compatibility applies only to TS files; .js/.jsx go through the
+// native scanner with no PMD massaging.
 function isTypeScriptFile(filePath: string, scriptKind: ts.ScriptKind): boolean {
     const ext = pathExt(filePath);
     if (ext === '.ts' || ext === '.tsx' || ext === '.mts' || ext === '.cts') return true;
@@ -273,11 +287,11 @@ function pathExt(filePath: string): string {
     return dot === -1 ? '' : filePath.slice(dot).toLowerCase();
 }
 
-// Маппинг offset -> {line, character}, идентичный sf.getLineAndCharacterOfPosition,
-// но без парса AST: TS под капотом делает computeLineAndCharacterOfPosition(
-// computeLineStarts(text), pos). Эти функции экспортируются в рантайме (но нет в
-// публичных типах), поэтому зовём через узкий каст; на старых сборках TS, где их
-// нет, откатываемся на полноценный SourceFile.
+// offset -> {line, character} mapping, identical to sf.getLineAndCharacterOfPosition
+// but without an AST parse: under the hood TS does computeLineAndCharacterOfPosition(
+// computeLineStarts(text), pos). Those functions are exported at runtime (but not
+// in the public types), so we call them through a narrow cast; on older TS builds
+// that lack them we fall back to a full SourceFile.
 interface LineMap {
     getLineAndCharacterOfPosition(pos: number): { line: number; character: number };
 }
@@ -343,9 +357,9 @@ function isTemplatePart(kind: ts.SyntaxKind): boolean {
     );
 }
 
-// Дробление куска шаблонного литерала на атомы PMD-typescript: backtick, `${`,
-// `}`, escape `\X` — по одному токену; всё остальное (текст, пробелы, переводы
-// строк) — по одному токену на символ (grammar: TemplateStringAtom: ~[`\\]).
+// Split a chunk of a template literal into PMD-typescript atoms: backtick, `${`,
+// `}`, and an escape `\X` are one token each; everything else (text, spaces,
+// newlines) is one token per character (grammar: TemplateStringAtom: ~[`\\]).
 function expandTemplateSpan(
     source: string,
     sf: LineMap,
@@ -359,9 +373,9 @@ function expandTemplateSpan(
         let len = 1;
         const char = source[i];
         if (char === '\\' && i + 1 < end) {
-            len = 2; // escape-атом
+            len = 2; // escape atom
         } else if (char === '$' && source[i + 1] === '{') {
-            len = 2; // начало интерполяции
+            len = 2; // start of an interpolation
         }
         const raw = source.slice(i, i + len);
         const structural = raw === '`' || raw === '${' || raw === '}';
@@ -415,6 +429,6 @@ export function scriptKindFor(ext: string): ts.ScriptKind {
     return ts.ScriptKind.TS;
 }
 
-// Vue (.vue) и Svelte (.svelte) живут в отдельных модулях-расширениях
-// src/vue.ts и src/svelte.ts по образцу src/angular.ts — каждый токенизирует
-// и <script>, и разметку (descriptor.template.ast / ast.fragment).
+// Vue (.vue) and Svelte (.svelte) live in their own extension modules src/vue.ts
+// and src/svelte.ts, modeled on src/angular.ts — each tokenizes both <script> and
+// markup (descriptor.template.ast / ast.fragment).

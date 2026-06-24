@@ -114,5 +114,5 @@ test('does not scan Angular inline templates by default', async () => {
         cwd: root,
     });
 
-    expect(result.stderr).not.toContain('Angular-шаблон пропущен');
+    expect(result.stderr).not.toContain('Angular template skipped');
 });
