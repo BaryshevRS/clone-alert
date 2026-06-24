@@ -18,7 +18,7 @@ npx clone-alert --minimum-tokens 50 --files src
 ## Why clone-alert?
 
 - 🎯 **PMD CPD‑compatible** — a faithful port of PMD's match algorithm and JavaScript/TypeScript tokenizers, validated against PMD's own golden fixtures.
-- ⚡ **Fast on large monorepos** — a struct‑of‑arrays token core with a Karp–Rabin rolling hash and radix‑sorted buckets. In our [benchmarks](#benchmarks) it runs **10–30× faster** than PMD CPD while using **1.4–2.5× less memory**, on real codebases from Next.js to nx.
+- ⚡ **Fast on large monorepos** — a struct‑of‑arrays token core with a Karp–Rabin rolling hash and radix‑sorted buckets. In our [benchmarks](#benchmarks) it runs **10–27× faster** than PMD CPD while using **1.3–2.6× less memory**, on real codebases from Next.js to nx.
 - 🧩 **Frontend templates, natively** — tokenizes **Vue** `<template>`, **Svelte** markup, and **Angular** templates, not just `<script>` blocks. Detects template‑to‑script duplication too.
 - 🧪 **Zero‑config CLI** — sensible defaults, recursive directory scan, `node_modules`/`.git`/`dist` skipped automatically.
 - 📦 **Tiny footprint** — a single runtime dependency (`typescript`). Framework parsers are **optional peer dependencies**, loaded only when needed.
@@ -184,17 +184,17 @@ Framework template tokens live in a separate namespace from script tokens, so ma
 
 ## Benchmarks
 
-clone-alert is a drop-in for PMD CPD that runs **10–30× faster** on **1.4–2.5× less memory** — on the same files, finding the same clones.
+clone-alert is a drop-in for PMD CPD that runs **10–27× faster** on **1.3–2.6× less memory** — on the same files, finding the same clones.
 
 Measured with [`npm run compare:pmd`](#development) on five real-world TypeScript codebases. Only pure `.ts` is compared (the exact file set PMD's `typescript` lexer can parse), so all tools see byte-identical input. macOS, Node 20, `--minimum-tokens 50`, JVM start-up counted for PMD as in real CLI use:
 
 | Repository | clone-alert | PMD CPD | Speed‑up | Peak RAM (clone vs PMD) | Agreement with PMD¹ |
 | --- | --- | --- | --- | --- | --- |
-| `nestjs/nest` | **1.8 s** | 52.7 s | **30×** | 203 MB vs 500 MB (2.5× less) | 100% |
-| `angular/components` | **1.5 s** | 42.5 s | **28×** | 338 MB vs 577 MB (1.7× less) | 95%² |
-| `microsoft/playwright` | **9.3 s** | 153 s | **16×** | 838 MB vs 1.4 GB (1.7× less) | 99.98% |
-| `vercel/next.js` | **5.8 s** | 73.4 s | **13×** | 1.3 GB vs 1.9 GB (1.4× less) | 99.2% |
-| `nrwl/nx` | **8.6 s** | 84.1 s | **10×** | 2.1 GB vs 3.3 GB (1.6× less) | 99.9% |
+| `nestjs/nest` | **0.7 s** | 15.4 s | **23×** | 203 MB vs 526 MB (2.6× less) | 100% |
+| `angular/components` | **1.6 s** | 41.9 s | **27×** | 338 MB vs 632 MB (1.9× less) | 95%² |
+| `microsoft/playwright` | **3.6 s** | 58.7 s | **16×** | 836 MB vs 1.6 GB (1.9× less) | 99.98% |
+| `vercel/next.js` | **6.0 s** | 73.6 s | **12×** | 1.3 GB vs 1.7 GB (1.3× less) | 99.2% |
+| `nrwl/nx` | **8.1 s** | 83.2 s | **10×** | 2.1 GB vs 3.2 GB (1.5× less) | 99.9% |
 
 <sub>¹ Jaccard overlap of the file pairs both tools flag as duplicated. ² `angular/components` ships ~20 near‑identical table demos sharing the same 398‑token block. clone-alert and PMD cut that clone's boundary **identically** (398, 391, 390, 210… tokens, token‑for‑token); they only disagree on *which* of the interchangeable demo files get grouped into the same `<duplication>` — a symmetric clustering tie‑break, not missed or mis‑sized duplication. On this small sample (~2 000 file pairs) that grouping noise is the whole 5%.</sub>
 
