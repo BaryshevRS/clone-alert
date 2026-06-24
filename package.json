@@ -1,6 +1,6 @@
 {
   "name": "clone-alert",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "PMD CPD-compatible copy-paste detector that finds duplicate code in TypeScript, JavaScript, JSX/TSX, Vue, Svelte and Angular.",
   "license": "MIT",
   "type": "commonjs",
@@ -19,7 +19,6 @@
   },
   "files": [
     "dist/**/*",
-    "scripts/compare-pmd-cpd.mjs",
     "README.md",
     "LICENSE"
   ],
@@ -71,7 +70,8 @@
     "publish:dry-run": "npm publish --dry-run",
     "publish:local": "npm publish --registry http://localhost:4873",
     "publish:local:dry-run": "npm publish --dry-run --registry http://localhost:4873",
-    "test": "npm run build && vitest run"
+    "test": "npm run build && vitest run",
+    "release": "npm publish"
   },
   "dependencies": {
     "typescript": "^6.0.3"
