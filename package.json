@@ -69,6 +69,8 @@
     "prepack": "npm run build",
     "prepublishOnly": "npm run check && npm run lint:knip && npm run check-types && npm run lint:cpd && npm test",
     "publish:dry-run": "npm publish --dry-run",
+    "publish:local": "npm publish --registry http://localhost:4873",
+    "publish:local:dry-run": "npm publish --dry-run --registry http://localhost:4873",
     "test": "npm run build && vitest run"
   },
   "dependencies": {
