@@ -456,27 +456,30 @@ class MatchCollector {
         return result;
     }
 
+    // Inlined matchEnded(mark1-1, mark2-1). Within a bucket mark2 > mark1, so when
+    // mark1 > 0 both predecessors are valid indices in [0, tokenCount) — no bounds
+    // check needed. !matchEnded reduces to "ids equal and not EOF".
     private hasPreviousDupe(mark1: number, mark2: number): boolean {
         if (mark1 === 0) return false;
-        return !this.matchEnded(mark1 - 1, mark2 - 1);
+        const id1 = this.ids[mark1 - 1];
+        const id2 = this.ids[mark2 - 1];
+        return id1 === id2 && id1 !== 0;
     }
 
+    // Inlined matchEnded in the hot scan. Bounds checks are unnecessary: every file
+    // ends with an EOF sentinel (id 0) that marks never sit on, so the larger index
+    // (mark2) reads a 0 and breaks before running off the end. (An out-of-range
+    // typed-array read yields undefined and also breaks, so the tail is safe.)
+    // id2 === 0 needs no separate test: if id1 === id2 === 0 the id1 === 0 test fires.
     private countDuplicateTokens(mark1: number, mark2: number): number {
+        const ids = this.ids;
         let index = 0;
         for (;;) {
-            if (this.matchEnded(mark1 + index, mark2 + index)) break;
+            const id1 = ids[mark1 + index];
+            const id2 = ids[mark2 + index];
+            if (id1 !== id2 || id1 === 0) break;
             index++;
         }
         return index;
-    }
-
-    // True once the windows diverge: one of the indices is out of range, the ids
-    // differ, or it is EOF (id === 0). Equivalent to matchEnded(token1, token2) on
-    // TokenEntry.
-    private matchEnded(a: number, b: number): boolean {
-        if (a < 0 || b < 0 || a >= this.tokenCount || b >= this.tokenCount) return true;
-        const id1 = this.ids[a];
-        const id2 = this.ids[b];
-        return id1 !== id2 || id1 === 0 || id2 === 0;
     }
 }
