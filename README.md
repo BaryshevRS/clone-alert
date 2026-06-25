@@ -6,7 +6,6 @@
 [![license](https://img.shields.io/npm/l/clone-alert.svg)](./LICENSE)
 [![node](https://img.shields.io/node/v/clone-alert.svg)](https://nodejs.org)
 [![types](https://img.shields.io/npm/types/clone-alert.svg)](https://www.npmjs.com/package/clone-alert)
-[![clone-alert](assets/clone-alert-badge.svg)](#duplication-badge)
 
 **clone-alert** finds duplicated and copy‑pasted code across your codebase by comparing **token streams** — the same proven approach as [PMD CPD](https://pmd.github.io/) (Copy‑Paste Detector), but built natively for the JavaScript/TypeScript ecosystem and your frontend templates. Catch code clones, enforce **DRY**, reduce technical debt, and fail your build when duplication creeps in.
 
@@ -90,7 +89,7 @@ clone-alert [options] [<path>...]
 | `--file-list <path>` | Read newline-separated paths to scan from a file. |
 | `--minimum-tokens <n>` | Minimum duplicated token span. Default: `50`. |
 | `--minimum-tile-size <n>` | Alias for `--minimum-tokens`. |
-| `--format <fmt>` | `text` (default), `xml`, `json`, `sarif`, `csv`, `csv_with_linecount_per_file`, `markdown`, `ai`. `sarif` targets GitHub Code Scanning; the two `csv` formats mirror PMD's CSV renderers. `xml`/`json`/`markdown` embed the duplicated code (PMD's `<codefragment>`, a jscpd-style `fragment` field, and a fenced code block respectively). `ai` is a compact, token-frugal listing for LLM pipelines. `badge` prints an SVG duplication badge to stdout (color from a fixed scale; redirect it to a file). `text` and `ai` end with a `N clones · X% duplicated lines` summary. |
+| `--format <fmt>` | `text` (default), `xml`, `json`, `sarif`, `csv`, `csv_with_linecount_per_file`, `markdown`, `ai`. `sarif` targets GitHub Code Scanning; the two `csv` formats mirror PMD's CSV renderers. `xml`/`json`/`markdown` embed the duplicated code (PMD's `<codefragment>`, a jscpd-style `fragment` field, and a fenced code block respectively). `ai` is a compact, token-frugal listing for LLM pipelines. `shields` prints a [shields.io endpoint](#duplication-badge) JSON for a duplication badge. `text` and `ai` end with a `N clones · X% duplicated lines` summary. |
 | `--extensions <ext[,ext...]>` | Extensions to include during recursive scans. |
 | `--exclude <glob[,glob...]>` | Exclude files or directories (glob). Can be repeated. Prunes the walk, not a post-filter — excluded directories are never read. |
 | `--non-recursive` | Scan only the top level of each directory. |
@@ -235,17 +234,17 @@ Combine it with a committed `--baseline` to surface only the duplications added 
 
 ## Duplication badge
 
-Show off how clean your codebase is. `--format badge` prints a self‑contained SVG badge with your duplication percentage to stdout — redirect it to a file, commit it, and drop it into your README:
+Show off how clean your codebase is with a [shields.io](https://shields.io/badges/endpoint-badge) badge. `--format shields` prints a shields **endpoint JSON** to stdout — host it (a committed file, a gist, anywhere reachable) and point shields at it:
 
 ```sh
-clone-alert src --minimum-tokens 70 --format badge --no-fail-on-violation > assets/clone-alert-badge.svg
+clone-alert src --minimum-tokens 70 --format shields --no-fail-on-violation > clone-alert-badge.json
 ```
 
 ```md
-[![clone-alert](assets/clone-alert-badge.svg)](https://github.com/BaryshevRS/clone-alert)
+[![clone-alert](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OWNER/REPO/main/clone-alert-badge.json)](https://github.com/BaryshevRS/clone-alert)
 ```
 
-The color comes from a fixed scale, tuned to reward near‑zero duplication:
+shields fetches the JSON and renders the badge, so it refreshes whenever you regenerate the file. The color comes from a fixed scale, tuned to reward near‑zero duplication:
 
 | Result | Color | |
 | --- | --- | --- |
@@ -257,11 +256,9 @@ The color comes from a fixed scale, tuned to reward near‑zero duplication:
 The percentage is `duplicated lines / total scanned lines`, so it tracks your chosen `--minimum-tokens` (and which files you scan — exclude `**/*.test.*` and fixtures to badge production code only). Regenerate it in CI to keep it fresh:
 
 ```yaml
-      - run: npx clone-alert src --minimum-tokens 70 --format badge --no-fail-on-violation > assets/clone-alert-badge.svg
-      # then commit the file, or upload it as a workflow artifact / to a gist
+      - run: npx clone-alert src --minimum-tokens 70 --format shields --no-fail-on-violation > clone-alert-badge.json
+      # then commit the file (or push it to a gist) so shields serves the latest value
 ```
-
-> clone-alert's own badge above is generated this way, from `src` at `--minimum-tokens 70` — the same threshold its CI enforces, so it reads **0 clones**.
 
 ## Programmatic API
 
@@ -326,7 +323,7 @@ Because the tokens are identical and the match engine is a faithful port of PMD'
 | PMD CPD algorithm parity | ✅ | — | ➖ |
 | CI baseline (fail only on new) | ✅ committed fingerprint file | ➖ | ⚠️ via on‑disk cache¹ |
 | SARIF / GitHub Code Scanning | ✅ | ➖ | ✅ |
-| Report formats | text, xml, json, sarif, csv, markdown, ai, badge | text, xml, csv, vs | many |
+| Report formats | text, xml, json, sarif, csv, markdown, ai, shields | text, xml, csv, vs | many |
 | PMD CLI flags (`--file-list`, `--non-recursive`, `--skip-duplicate-files`, `--skip-lexical-errors`) | ✅ | ✅ | ➖ |
 | `.gitignore` aware | ✅ (on by default, prunes walk) | ➖ | ✅ |
 | Install size | tiny (1 dep) | JVM required | npm package |

@@ -435,34 +435,33 @@ test('--format ai emits a compact listing with a duplication-stats summary', asy
     expect(stdout).not.toContain('const alpha');
 });
 
-test('--format badge prints a green 0% SVG when there are no duplicates', async () => {
-    const fixture = await makeFixture('badge-clean');
+test('--format shields emits a bright-green "0 clones" endpoint payload when clean', async () => {
+    const fixture = await makeFixture('shields-clean');
     await writeFile(path.join(fixture, 'a.ts'), 'export const a = 1;\n');
     await writeFile(path.join(fixture, 'b.ts'), 'export const b = 2;\n');
 
     const { stdout } = await execFileAsync(
         process.execPath,
-        [cli, '--minimum-tokens', '10', '--files', fixture, '--format', 'badge'],
+        [cli, '--minimum-tokens', '10', '--files', fixture, '--format', 'shields'],
         { cwd: root }
     );
 
-    expect(stdout).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
-    expect(stdout).toContain('aria-label="clone-alert: 0 clones"');
-    expect(stdout).toContain('#44cc11'); // bright green hero
+    const payload = JSON.parse(stdout) as { schemaVersion: number; label: string; message: string; color: string };
+    expect(payload).toEqual({ schemaVersion: 1, label: 'clone-alert', message: '0 clones', color: 'brightgreen' });
 });
 
-test('--format badge reports the percentage and a non-green color when code duplicates', async () => {
-    const fixture = await dupFixture('badge-dirty');
+test('--format shields reports the percentage and a non-hero color when code duplicates', async () => {
+    const fixture = await dupFixture('shields-dirty');
 
     const { stdout } = await execFileAsync(
         process.execPath,
-        [cli, '--minimum-tokens', '5', '--files', fixture, '--format', 'badge', '--no-fail-on-violation'],
+        [cli, '--minimum-tokens', '5', '--files', fixture, '--format', 'shields', '--no-fail-on-violation'],
         { cwd: root }
     );
 
-    expect(stdout).toMatch(/aria-label="clone-alert: \d+\.\d%"/);
-    expect(stdout).not.toContain('0 clones');
-    expect(stdout).not.toContain('#44cc11'); // these fixtures are mostly clone -> not the hero green
+    const payload = JSON.parse(stdout) as { message: string; color: string };
+    expect(payload.message).toMatch(/^\d+\.\d%$/);
+    expect(payload.color).not.toBe('brightgreen'); // mostly-clone fixtures aren't the hero state
 });
 
 test('text report ends with a duplication-stats footer', async () => {
