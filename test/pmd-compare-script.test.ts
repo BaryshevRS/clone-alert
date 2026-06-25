@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
@@ -15,6 +16,12 @@ test('prints PMD comparison harness help', async () => {
     expect(stdout).toContain('--extensions');
     expect(stdout).toContain('--jscpd');
     expect(stdout).toContain('--repo-name');
+});
+
+test('does not fail clone-alert comparison when duplicates are found', async () => {
+    const source = await readFile(script, 'utf8');
+
+    expect(source).toMatch(/'clone-alert'[\s\S]*'--no-fail-on-violation'/);
 });
 
 test('compares pair overlap without materializing PMD pair sets', async () => {

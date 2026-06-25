@@ -103,6 +103,7 @@ function main(argv) {
             ...ignoreFlags,
             '--format',
             'xml',
+            '--no-fail-on-violation',
         ],
         { stdoutFile: cloneReport }
     );

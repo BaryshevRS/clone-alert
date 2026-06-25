@@ -6,6 +6,7 @@
 [![license](https://img.shields.io/npm/l/clone-alert.svg)](./LICENSE)
 [![node](https://img.shields.io/node/v/clone-alert.svg)](https://nodejs.org)
 [![types](https://img.shields.io/npm/types/clone-alert.svg)](https://www.npmjs.com/package/clone-alert)
+[![clone-alert](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/BaryshevRS/clone-alert/main/clone-alert-badge.json)](#duplication-badge)
 
 **clone-alert** finds duplicated and copy‑pasted code across your codebase by comparing **token streams** — the same proven approach as [PMD CPD](https://pmd.github.io/) (Copy‑Paste Detector), but built natively for the JavaScript/TypeScript ecosystem and your frontend templates. Catch code clones, enforce **DRY**, reduce technical debt, and fail your build when duplication creeps in.
 

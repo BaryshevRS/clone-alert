@@ -1,6 +1,6 @@
 {
   "name": "clone-alert",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "PMD CPD-compatible copy-paste detector that finds duplicate code in TypeScript, JavaScript, JSX/TSX, Vue, Svelte and Angular.",
   "license": "MIT",
   "type": "commonjs",
@@ -60,6 +60,7 @@
     "check": "biome check .",
     "check:fix": "biome check --write .",
     "check-types": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "badge": "npm run build && node dist/cli.js src --minimum-tokens 70 --format shields --no-fail-on-violation > clone-alert-badge.json",
     "compare:pmd": "npm run build && node scripts/compare-pmd-cpd.mjs",
     "lint": "npm run check:fix && npm run lint:knip && npm run check-types && npm run lint:cpd",
     "lint:cpd": "npm run build && node dist/cli.js --minimum-tokens 70 --files src --extensions ts --format text --fail-on-violation",
