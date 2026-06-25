@@ -10,7 +10,8 @@ export function collectFiles(
     paths: string[],
     extensions: Set<string>,
     excludePatterns: string[] = [],
-    respectGitignore = true
+    respectGitignore = true,
+    nonRecursive = false
 ): string[] {
     const files: string[] = [];
     const seen = new Set<string>();
@@ -27,6 +28,8 @@ export function collectFiles(
         if (!isTopLevel && respectGitignore && isGitIgnored(layers, full, stat.isDirectory())) return;
 
         if (stat.isDirectory()) {
+            // --non-recursive: scan a directory's direct children, never descend into subdirs.
+            if (!isTopLevel && nonRecursive) return;
             if (isExcluded(`${full}${path.sep}`, excludeMatchers)) return;
             // The directory's own .gitignore governs its children, not itself.
             const childLayers = respectGitignore ? withGitignore(layers, full) : layers;

@@ -144,6 +144,16 @@ test('an explicitly passed ignored file is still scanned', async () => {
     expect(rel(root, collectFiles([path.join(root, 'b.ts')], TS))).toEqual(['b.ts']);
 });
 
+test('--non-recursive scans a directory top level only', async () => {
+    const root = await tree({
+        'top.ts': '',
+        'sub/deep.ts': '',
+    });
+
+    expect(rel(root, collectFiles([root], TS, [], false, true))).toEqual(['top.ts']);
+    expect(rel(root, collectFiles([root], TS, [], false, false))).toEqual(['sub/deep.ts', 'top.ts']);
+});
+
 test('throws a clear error for a path that does not exist', async () => {
     const root = await tree({ 'a.ts': '' });
     expect(() => collectFiles([path.join(root, 'missing')], TS)).toThrow(/path does not exist/);

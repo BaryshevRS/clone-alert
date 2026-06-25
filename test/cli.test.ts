@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -70,6 +70,7 @@ test('uses PMD-like strict comparison by default and enables normalization by fl
         '--minimum-tokens',
         '8',
         '--ignore-identifiers',
+        '--no-fail-on-violation',
         '--files',
         fixture,
     ]);
@@ -90,6 +91,7 @@ test('tokenizes JavaScript natively regardless of the PMD typescript flag', asyn
         cli,
         '--minimum-tokens',
         '20',
+        '--no-fail-on-violation',
         '--files',
         fixture,
         '--extensions',
@@ -99,6 +101,7 @@ test('tokenizes JavaScript natively regardless of the PMD typescript flag', asyn
         cli,
         '--minimum-tokens',
         '20',
+        '--no-fail-on-violation',
         '--files',
         fixture,
         '--extensions',
@@ -216,7 +219,7 @@ test('emits SARIF 2.1.0 for GitHub Code Scanning', async () => {
     // Run with cwd at the fixture so artifact URIs are clean relative paths.
     const { stdout } = await execFileAsync(
         process.execPath,
-        [cli, '--minimum-tokens', '5', '--files', '.', '--format', 'sarif'],
+        [cli, '--minimum-tokens', '5', '--files', '.', '--format', 'sarif', '--no-fail-on-violation'],
         { cwd: fixture }
     );
 
@@ -298,6 +301,146 @@ test('honors a repo-root .gitignore when scanning a subdirectory', async () => {
     );
     // The vendored copy is pruned via the parent .gitignore, so no duplication remains.
     expect(result.stdout).toBe('');
+});
+
+async function dupFixture(name: string): Promise<string> {
+    const fixture = await makeFixture(name);
+    await writeFile(path.join(fixture, 'a.ts'), DUP_BLOCK);
+    await writeFile(path.join(fixture, 'b.ts'), DUP_BLOCK.replace('duplicateOne', 'duplicateTwo'));
+    return fixture;
+}
+
+test('fails on violation by default (PMD parity)', async () => {
+    const fixture = await dupFixture('default-fail');
+
+    await expect(
+        execFileAsync(process.execPath, [cli, '--minimum-tokens', '5', '--files', fixture], { cwd: root })
+    ).rejects.toMatchObject({ code: 4 });
+});
+
+test('--no-fail-on-violation reports but exits 0', async () => {
+    const fixture = await dupFixture('no-fail');
+
+    const { stdout } = await execFileAsync(
+        process.execPath,
+        [cli, '--minimum-tokens', '5', '--files', fixture, '--no-fail-on-violation'],
+        { cwd: root }
+    );
+    expect(stdout).toMatch(/Found a \d+ token \(2 occurrences\) duplication:/);
+});
+
+test('--format csv emits the PMD CSV header and a row per duplication', async () => {
+    const fixture = await dupFixture('csv');
+
+    const { stdout } = await execFileAsync(
+        process.execPath,
+        [cli, '--minimum-tokens', '5', '--files', fixture, '--format', 'csv', '--no-fail-on-violation'],
+        { cwd: root }
+    );
+
+    const lines = stdout.trim().split('\n');
+    expect(lines[0]).toBe('lines,tokens,occurrences');
+    const cells = lines[1].split(',');
+    expect(cells[2]).toBe('2'); // occurrences
+    expect(lines[1].match(/"/g)).toHaveLength(4); // two quoted file paths
+    expect(lines[1]).toContain('a.ts');
+    expect(lines[1]).toContain('b.ts');
+});
+
+test('--format csv_with_linecount_per_file omits the header', async () => {
+    const fixture = await dupFixture('csv-lc');
+
+    const { stdout } = await execFileAsync(
+        process.execPath,
+        [
+            cli,
+            '--minimum-tokens',
+            '5',
+            '--files',
+            fixture,
+            '--format',
+            'csv_with_linecount_per_file',
+            '--no-fail-on-violation',
+        ],
+        { cwd: root }
+    );
+
+    const lines = stdout.trim().split('\n');
+    expect(lines[0]).not.toBe('lines,tokens,occurrences');
+    expect(lines[0].split(',')[0]).toBe('2'); // occurrences first
+    expect(lines[0].match(/"/g)).toHaveLength(4);
+});
+
+test('--skip-duplicate-files skips same-name same-length copies', async () => {
+    const fixture = await makeFixture('skip-dup');
+    await mkdir(path.join(fixture, 'a'), { recursive: true });
+    await mkdir(path.join(fixture, 'b'), { recursive: true });
+    // Same basename, identical content → identical byte length.
+    await writeFile(path.join(fixture, 'a', 'dup.ts'), DUP_BLOCK);
+    await writeFile(path.join(fixture, 'b', 'dup.ts'), DUP_BLOCK);
+
+    // Skipped: only one copy is scanned, so there is no cross-file clone.
+    const skipped = await execFileAsync(
+        process.execPath,
+        [cli, '--minimum-tokens', '5', '--files', fixture, '--skip-duplicate-files'],
+        { cwd: root }
+    );
+    expect(skipped.stdout).toBe('');
+
+    // Without the flag both copies are scanned and the duplication trips the default exit 4.
+    await expect(
+        execFileAsync(process.execPath, [cli, '--minimum-tokens', '5', '--files', fixture], { cwd: root })
+    ).rejects.toMatchObject({ code: 4 });
+});
+
+test('--file-list scans the newline-separated paths it points at', async () => {
+    const fixture = await dupFixture('file-list');
+    const listPath = path.join(fixture, 'list.txt');
+    await writeFile(listPath, `${path.join(fixture, 'a.ts')}\n${path.join(fixture, 'b.ts')}\n`);
+
+    const { stdout } = await execFileAsync(
+        process.execPath,
+        [cli, '--minimum-tokens', '5', '--file-list', listPath, '--no-fail-on-violation'],
+        { cwd: root }
+    );
+    expect(stdout).toMatch(/Found a \d+ token \(2 occurrences\) duplication:/);
+});
+
+test('--file-list pointing at a missing file is an error', async () => {
+    await expect(
+        execFileAsync(process.execPath, [cli, '--file-list', path.join(tmpdir(), 'no-such-list.txt')], { cwd: root })
+    ).rejects.toMatchObject({
+        code: 2,
+        stderr: expect.stringMatching(/--file-list not readable/),
+    });
+});
+
+const cannotChmod = process.platform === 'win32' || (typeof process.getuid === 'function' && process.getuid() === 0);
+
+test.skipIf(cannotChmod)('--skip-lexical-errors skips unreadable files instead of aborting', async () => {
+    const fixture = await dupFixture('lexical');
+    const bad = path.join(fixture, 'bad.ts');
+    await writeFile(bad, DUP_BLOCK);
+    await chmod(bad, 0o000);
+
+    // Without the flag the read failure aborts the run with a usage exit code.
+    await expect(
+        execFileAsync(process.execPath, [cli, '--minimum-tokens', '5', '--files', fixture], { cwd: root })
+    ).rejects.toMatchObject({
+        code: 2,
+        stderr: expect.stringMatching(/--skip-lexical-errors/),
+    });
+
+    // With it, bad.ts is skipped (with a warning) and the a.ts/b.ts clone is still reported.
+    const { stdout, stderr } = await execFileAsync(
+        process.execPath,
+        [cli, '--minimum-tokens', '5', '--files', fixture, '--skip-lexical-errors', '--no-fail-on-violation'],
+        { cwd: root }
+    );
+    expect(stderr).toMatch(/skipping .*bad\.ts/);
+    expect(stdout).toMatch(/Found a \d+ token \(2 occurrences\) duplication:/);
+
+    await chmod(bad, 0o644); // restore so the tmp dir can be cleaned up
 });
 
 test('--update-baseline without --baseline is an error', async () => {

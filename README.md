@@ -22,7 +22,7 @@ npx clone-alert --minimum-tokens 50 --files src
 - 🧩 **Frontend templates, natively** — tokenizes **Vue** `<template>`, **Svelte** markup, and **Angular** templates, not just `<script>` blocks. Detects template‑to‑script duplication too.
 - 🧪 **Zero‑config CLI** — sensible defaults, recursive directory scan, `node_modules`/`.git`/`dist` skipped automatically.
 - 📦 **Tiny footprint** — a single runtime dependency (`typescript`). Framework parsers are **optional peer dependencies**, loaded only when needed.
-- 🛠 **CI‑ready** — `text`, `json`, PMD‑style `xml`, and **SARIF** (GitHub Code Scanning) reports, plus `--fail-on-violation` (exit code `4`).
+- 🛠 **CI‑ready** — `text`, `json`, PMD‑style `xml` / `csv`, and **SARIF** (GitHub Code Scanning) reports; fails the build on duplication by default (exit code `4`), like PMD CPD.
 - 📉 **Baseline for adoption** — accept the clones an existing project already has and fail CI only on **new** ones. Fingerprints are content‑based, so the baseline survives code moving around.
 - 🔇 **Inline suppression** — ignore known duplication with `CPD-OFF` / `CPD-ON` comment markers.
 
@@ -60,14 +60,15 @@ Requires **Node.js 18+**.
 ## Quick start
 
 ```sh
-# Scan a folder and print a human‑readable report
+# Scan a folder and print a human‑readable report.
+# Like PMD CPD, this exits 4 when duplication is found — so it fails CI out of the box.
 clone-alert --minimum-tokens 50 --files src
 
-# Fail CI when duplication is found (exit code 4)
-clone-alert --minimum-tokens 50 --files src --fail-on-violation
+# Just want the report, never a failing exit code? Opt out:
+clone-alert --minimum-tokens 50 --files src --no-fail-on-violation
 
-# Machine‑readable output for dashboards
-clone-alert --format json --files src,packages > duplication.json
+# Machine‑readable output for dashboards (don't fail the job that builds the artifact)
+clone-alert --format json --files src,packages --no-fail-on-violation > duplication.json
 
 # Adopt an existing project: accept today's clones, fail only on new ones
 clone-alert --files src --baseline .clone-alert-baseline.json --update-baseline
@@ -85,12 +86,16 @@ clone-alert [options] [<path>...]
 | Option | Description |
 | --- | --- |
 | `--files <path[,path...]>` | Files or directories to scan. Can be repeated. |
+| `--file-list <path>` | Read newline-separated paths to scan from a file. |
 | `--minimum-tokens <n>` | Minimum duplicated token span. Default: `50`. |
 | `--minimum-tile-size <n>` | Alias for `--minimum-tokens`. |
-| `--format <text\|xml\|json\|sarif>` | Report format. Default: `text`. `sarif` targets GitHub Code Scanning. |
+| `--format <fmt>` | `text` (default), `xml`, `json`, `sarif`, `csv`, `csv_with_linecount_per_file`. `sarif` targets GitHub Code Scanning; the two `csv` formats mirror PMD's CSV renderers. |
 | `--extensions <ext[,ext...]>` | Extensions to include during recursive scans. |
 | `--exclude <glob[,glob...]>` | Exclude files or directories (glob). Can be repeated. Prunes the walk, not a post-filter — excluded directories are never read. |
+| `--non-recursive` | Scan only the top level of each directory. |
 | `--gitignore` / `--no-gitignore` | Skip files ignored by `.gitignore` (nested files and the repo-root file honored). On by default. |
+| `--skip-duplicate-files` | Skip files with the same name and byte length (PMD parity). |
+| `--skip-lexical-errors` | Skip files that fail to tokenize instead of aborting the whole run. |
 | `--ignore-identifiers` / `--no-ignore-identifiers` | Normalize or compare identifier names. Strict by default, like PMD. |
 | `--ignore-literals` / `--no-ignore-literals` | Normalize or compare literals. Strict by default, like PMD. |
 | `--pmd-typescript-compatibility` / `--no-…` | Match PMD `typescript` granularity for `.ts/.tsx` (split template literals into atoms, collapse regexp). On by default. |
@@ -98,7 +103,7 @@ clone-alert [options] [<path>...]
 | `--vue-templates` / `--no-vue-templates` | Tokenize `.vue` markup, not just `<script>`. On by default. |
 | `--angular-inline-templates` | Also scan Angular `@Component` inline templates. |
 | `--skip-angular-inline-templates` | Do not scan inline Angular templates (explicit default). |
-| `--fail-on-violation` | Exit with code `4` when duplications are found. |
+| `--fail-on-violation` / `--no-fail-on-violation` | Exit with code `4` when duplications are found. **On by default**, like PMD CPD; pass `--no-fail-on-violation` to always exit `0`. |
 | `--baseline <path>` | Ignore duplications recorded in this baseline file; report and fail only on **new** ones. Matched by content fingerprint, so accepted clones stay suppressed even after the code moves. |
 | `--update-baseline` | Write/regenerate the baseline file at `--baseline` with all current duplications, then exit `0`. Run once to adopt existing debt. |
 | `-h, --help` | Show help. |
@@ -217,7 +222,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
-      - run: npx clone-alert src --format sarif > clone-alert.sarif
+      # --no-fail-on-violation so the step exits 0 and the SARIF still uploads;
+      # GitHub surfaces the duplications as code-scanning alerts instead.
+      - run: npx clone-alert src --format sarif --no-fail-on-violation > clone-alert.sarif
       - uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: clone-alert.sarif
@@ -288,6 +295,8 @@ Because the tokens are identical and the match engine is a faithful port of PMD'
 | PMD CPD algorithm parity | ✅ | — | ➖ |
 | CI baseline (fail only on new) | ✅ committed fingerprint file | ➖ | ⚠️ via on‑disk cache¹ |
 | SARIF / GitHub Code Scanning | ✅ | ➖ | ✅ |
+| Report formats | text, xml, json, sarif, csv | text, xml, csv, vs | many |
+| PMD CLI flags (`--file-list`, `--non-recursive`, `--skip-duplicate-files`, `--skip-lexical-errors`) | ✅ | ✅ | ➖ |
 | `.gitignore` aware | ✅ (on by default, prunes walk) | ➖ | ✅ |
 | Install size | tiny (1 dep) | JVM required | npm package |
 

@@ -7,13 +7,16 @@ import type { Match } from './core';
 import { collectFiles, toPosix } from './files';
 import { Cpd, type CpdOptions, type MatchLocation } from './index';
 
-type ReportFormat = 'text' | 'xml' | 'json' | 'sarif';
+type ReportFormat = 'text' | 'xml' | 'json' | 'sarif' | 'csv' | 'csv_with_linecount_per_file';
 
 interface CliOptions extends CpdOptions {
     paths: string[];
     extensions: Set<string>;
     excludePatterns: string[];
     respectGitignore: boolean;
+    nonRecursive: boolean;
+    skipDuplicateFiles: boolean;
+    skipLexicalErrors: boolean;
     format: ReportFormat;
     failOnViolation: boolean;
     baselinePath?: string;
@@ -41,15 +44,21 @@ PMD CPD-like copy-paste detector for TS/JS and common frontend templates.
 
 Options:
   --files <path[,path...]>        Files or directories to scan. Can be repeated.
+  --file-list <path>              Read newline-separated paths to scan from a file.
   --minimum-tokens <n>            Minimum duplicated token span. Default: 50.
   --minimum-tile-size <n>         Alias for --minimum-tokens.
-  --format <text|xml|json|sarif>  Report format. Default: text. sarif targets
+  --format <fmt>                  Report format: text (default), xml, json, sarif,
+                                  csv, csv_with_linecount_per_file. sarif targets
                                   GitHub Code Scanning.
   --extensions <ext[,ext...]>     Extensions to include. Default: ts,tsx,js,jsx,vue,svelte,html.
   --exclude <glob[,glob...]>      Exclude files or directories. Can be repeated.
+  --non-recursive                 Scan only the top level of each directory.
   --gitignore                     Skip files ignored by .gitignore (nested files
                                   honored, within the git repo). Default.
   --no-gitignore                  Scan files even if .gitignore would ignore them.
+  --skip-duplicate-files          Skip files with the same name and byte length.
+  --skip-lexical-errors           Skip files that fail to tokenize instead of
+                                  aborting the whole run.
   --ignore-identifiers            Normalize identifiers.
   --no-ignore-identifiers         Compare exact identifiers. Default.
   --ignore-literals               Normalize literals.
@@ -72,7 +81,8 @@ Options:
                                   alone (handy for a code-only threshold pass).
   --angular-inline-templates      Also scan Angular @Component inline templates.
   --skip-angular-inline-templates Do not scan inline Angular templates. Default.
-  --fail-on-violation             Exit with code 4 when duplications are found.
+  --fail-on-violation             Exit with code 4 when duplications are found. Default.
+  --no-fail-on-violation          Always exit 0 even when duplications are found.
   --baseline <path>               Ignore duplications recorded in this baseline
                                   file; report and fail only on new ones. Match is
                                   by content fingerprint, so accepted clones stay
@@ -113,7 +123,13 @@ function main(argv: string[]): number {
 
     let files: string[];
     try {
-        files = collectFiles(options.paths, options.extensions, options.excludePatterns, options.respectGitignore);
+        files = collectFiles(
+            options.paths,
+            options.extensions,
+            options.excludePatterns,
+            options.respectGitignore,
+            options.nonRecursive
+        );
     } catch (error) {
         console.error(`clone-alert: ${(error as Error).message}`);
         return 2;
@@ -124,8 +140,25 @@ function main(argv: string[]): number {
     }
 
     const cpd = new Cpd(options);
+    // PMD's --skip-duplicate-files keys on basename + byte length, not content.
+    const dupKeys = options.skipDuplicateFiles ? new Set<string>() : null;
     for (const file of files) {
-        cpd.addPath(file);
+        if (dupKeys) {
+            const key = `${path.basename(file)}_${fs.statSync(file).size}`;
+            if (dupKeys.has(key)) continue;
+            dupKeys.add(key);
+        }
+        try {
+            cpd.addPath(file);
+        } catch (error) {
+            if (options.skipLexicalErrors) {
+                console.error(`clone-alert: skipping ${file}: ${(error as Error).message}`);
+                continue;
+            }
+            console.error(`clone-alert: ${(error as Error).message}`);
+            console.error('clone-alert: pass --skip-lexical-errors to skip files that fail to tokenize.');
+            return 2;
+        }
     }
 
     const matches = cpd.run();
@@ -185,6 +218,9 @@ function parseArgs(argv: string[]): CliOptions {
     const extensions = new Set(DEFAULT_EXTENSIONS);
     const excludePatterns: string[] = [];
     let respectGitignore = true;
+    let nonRecursive = false;
+    let skipDuplicateFiles = false;
+    let skipLexicalErrors = false;
     let minTileSize = 50;
     let ignoreIdentifiers = false;
     let ignoreLiterals = false;
@@ -193,7 +229,7 @@ function parseArgs(argv: string[]): CliOptions {
     let vueTemplates = true;
     let angularInlineTemplates = false;
     let format: ReportFormat = 'text';
-    let failOnViolation = false;
+    let failOnViolation = true;
     let baselinePath: string | undefined;
     let updateBaseline = false;
 
@@ -214,6 +250,14 @@ function parseArgs(argv: string[]): CliOptions {
         }
         if (arg.startsWith('--files=')) {
             paths.push(...splitList(arg.slice('--files='.length)));
+            continue;
+        }
+        if (arg === '--file-list') {
+            paths.push(...readFileList(requireValue(argv, ++i, arg)));
+            continue;
+        }
+        if (arg.startsWith('--file-list=')) {
+            paths.push(...readFileList(arg.slice('--file-list='.length)));
             continue;
         }
         if (arg === '--minimum-tokens' || arg === '--minimum-tile-size') {
@@ -258,6 +302,18 @@ function parseArgs(argv: string[]): CliOptions {
         }
         if (arg === '--no-gitignore') {
             respectGitignore = false;
+            continue;
+        }
+        if (arg === '--non-recursive') {
+            nonRecursive = true;
+            continue;
+        }
+        if (arg === '--skip-duplicate-files') {
+            skipDuplicateFiles = true;
+            continue;
+        }
+        if (arg === '--skip-lexical-errors') {
+            skipLexicalErrors = true;
             continue;
         }
         if (arg === '--ignore-identifiers') {
@@ -312,6 +368,10 @@ function parseArgs(argv: string[]): CliOptions {
             failOnViolation = true;
             continue;
         }
+        if (arg === '--no-fail-on-violation') {
+            failOnViolation = false;
+            continue;
+        }
         if (arg === '--baseline') {
             baselinePath = requireValue(argv, ++i, arg);
             continue;
@@ -335,6 +395,9 @@ function parseArgs(argv: string[]): CliOptions {
         extensions,
         excludePatterns,
         respectGitignore,
+        nonRecursive,
+        skipDuplicateFiles,
+        skipLexicalErrors,
         minTileSize,
         ignoreIdentifiers,
         ignoreLiterals,
@@ -372,11 +435,26 @@ function parsePositiveInteger(value: string, option: string): number {
     return parsed;
 }
 
+const REPORT_FORMATS: ReportFormat[] = ['text', 'xml', 'json', 'sarif', 'csv', 'csv_with_linecount_per_file'];
+
 function parseFormat(value: string): ReportFormat {
-    if (value === 'text' || value === 'xml' || value === 'json' || value === 'sarif') {
-        return value;
+    if ((REPORT_FORMATS as string[]).includes(value)) {
+        return value as ReportFormat;
     }
-    throw new Error('--format must be one of: text, xml, json, sarif');
+    throw new Error(`--format must be one of: ${REPORT_FORMATS.join(', ')}`);
+}
+
+function readFileList(listPath: string): string[] {
+    let contents: string;
+    try {
+        contents = fs.readFileSync(listPath, 'utf-8');
+    } catch {
+        throw new Error(`--file-list not readable: ${listPath}`);
+    }
+    return contents
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
 }
 
 function replaceExtensions(target: Set<string>, value: string): void {
@@ -396,7 +474,46 @@ function formatReport(format: ReportFormat, cpd: Cpd, matches: Match[]): string 
     if (format === 'sarif') {
         return formatSarif(matches, cpd);
     }
+    if (format === 'csv') {
+        return formatCsv(matches, cpd);
+    }
+    if (format === 'csv_with_linecount_per_file') {
+        return formatCsvWithLinecountPerFile(matches, cpd);
+    }
     return cpd.report(matches);
+}
+
+// Mirrors PMD's CSVRenderer: a `lines,tokens,occurrences` header, then per
+// duplication `<lines>,<tokens>,<occurrences>` followed by `<startLine>,"<file>"`
+// for each occurrence.
+function formatCsv(matches: Match[], cpd: Cpd): string {
+    const rows = ['lines,tokens,occurrences'];
+    for (const match of matches) {
+        const duplicate = matchToJson(match, cpd);
+        const cells = [String(duplicate.lines), String(match.tokenCount), String(match.markCount)];
+        for (const mark of match.marks) {
+            const location = cpd.locationForMark(mark, match.tokenCount);
+            cells.push(String(location.startLine), `"${location.path}"`);
+        }
+        rows.push(cells.join(','));
+    }
+    return `${rows.join('\n')}\n`;
+}
+
+// Mirrors PMD's CSVWithLinecountPerFileRenderer: no header; per duplication
+// `<occurrences>,<tokens>` then `<startLine>,<lineCount>,"<file>"` per occurrence.
+function formatCsvWithLinecountPerFile(matches: Match[], cpd: Cpd): string {
+    const rows: string[] = [];
+    for (const match of matches) {
+        const cells = [String(match.markCount), String(match.tokenCount)];
+        for (const mark of match.marks) {
+            const location = cpd.locationForMark(mark, match.tokenCount);
+            const lineCount = location.endLine - location.startLine + 1;
+            cells.push(String(location.startLine), String(lineCount), `"${location.path}"`);
+        }
+        rows.push(cells.join(','));
+    }
+    return `${rows.join('\n')}\n`;
 }
 
 // SARIF 2.1.0 for GitHub Code Scanning (`github/codeql-action/upload-sarif`).

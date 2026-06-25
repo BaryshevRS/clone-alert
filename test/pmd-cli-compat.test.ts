@@ -52,7 +52,14 @@ describe('PMD CPD CLI duplicate-search compatibility', () => {
         const directory = await fixtureDir('clone-alert-pmd-order');
         await writeDuplicatePair(directory);
 
-        const { stdout } = await execFileAsync(process.execPath, [cli, '--minimum-tokens', '5', '--files', directory]);
+        const { stdout } = await execFileAsync(process.execPath, [
+            cli,
+            '--minimum-tokens',
+            '5',
+            '--files',
+            directory,
+            '--no-fail-on-violation',
+        ]);
 
         const first = stdout.indexOf('dup1.ts');
         const second = stdout.indexOf('dup2.ts');
@@ -65,7 +72,14 @@ describe('PMD CPD CLI duplicate-search compatibility', () => {
         const directory = await fixtureDir('clone-alert-pmd-threshold');
         await writeDuplicatePair(directory);
 
-        const detected = await execFileAsync(process.execPath, [cli, '--minimum-tokens', '5', '--files', directory]);
+        const detected = await execFileAsync(process.execPath, [
+            cli,
+            '--minimum-tokens',
+            '5',
+            '--files',
+            directory,
+            '--no-fail-on-violation',
+        ]);
         const ignored = await execFileAsync(process.execPath, [cli, '--minimum-tokens', '500', '--files', directory]);
 
         expect(detected.stdout).toMatch(/Found a \d+ token \(2 occurrences\) duplication:/);
@@ -84,6 +98,7 @@ describe('PMD CPD CLI duplicate-search compatibility', () => {
             'json',
             '--files',
             directory,
+            '--no-fail-on-violation',
         ]);
         const report = JSON.parse(stdout) as {
             duplicates: Array<{
@@ -113,6 +128,7 @@ describe('PMD CPD CLI duplicate-search compatibility', () => {
             'xml',
             '--files',
             directory,
+            '--no-fail-on-violation',
         ]);
 
         expect(stdout).toContain('<?xml version="1.0" encoding="UTF-8"?>');
@@ -136,6 +152,7 @@ describe('PMD CPD CLI duplicate-search compatibility', () => {
             'json',
             '--files',
             directory,
+            '--no-fail-on-violation',
         ]);
         const report = JSON.parse(stdout) as {
             duplicates: Array<{
@@ -170,6 +187,7 @@ describe('PMD CPD CLI duplicate-search compatibility', () => {
             'xml',
             '--files',
             directory,
+            '--no-fail-on-violation',
         ]);
 
         expect(stdout).toContain('<duplication ');
@@ -195,6 +213,7 @@ describe('PMD CPD CLI duplicate-search compatibility', () => {
             'text',
             '--files',
             directory,
+            '--no-fail-on-violation',
         ]);
 
         const firstIndex = stdout.indexOf(firstFile);

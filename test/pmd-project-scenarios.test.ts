@@ -42,6 +42,7 @@ describe('real npm project CPD scenarios', () => {
             'ts',
             '--format',
             'json',
+            '--no-fail-on-violation',
         ]);
 
         const report = JSON.parse(stdout) as JsonReport;
@@ -75,6 +76,7 @@ describe('real npm project CPD scenarios', () => {
             'tsx',
             '--format',
             'json',
+            '--no-fail-on-violation',
         ]);
 
         const report = JSON.parse(stdout) as JsonReport;
@@ -115,6 +117,7 @@ describe('real npm project CPD scenarios', () => {
             '**/generated/**',
             '--format',
             'json',
+            '--no-fail-on-violation',
         ]);
 
         const report = JSON.parse(stdout) as JsonReport;
