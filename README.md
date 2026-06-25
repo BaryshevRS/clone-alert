@@ -89,7 +89,8 @@ clone-alert [options] [<path>...]
 | `--minimum-tile-size <n>` | Alias for `--minimum-tokens`. |
 | `--format <text\|xml\|json\|sarif>` | Report format. Default: `text`. `sarif` targets GitHub Code Scanning. |
 | `--extensions <ext[,ext...]>` | Extensions to include during recursive scans. |
-| `--exclude <glob[,glob...]>` | Exclude files or directories (glob). Can be repeated. |
+| `--exclude <glob[,glob...]>` | Exclude files or directories (glob). Can be repeated. Prunes the walk, not a post-filter — excluded directories are never read. |
+| `--gitignore` / `--no-gitignore` | Skip files ignored by `.gitignore` (nested files and the repo-root file honored). On by default. |
 | `--ignore-identifiers` / `--no-ignore-identifiers` | Normalize or compare identifier names. Strict by default, like PMD. |
 | `--ignore-literals` / `--no-ignore-literals` | Normalize or compare literals. Strict by default, like PMD. |
 | `--pmd-typescript-compatibility` / `--no-…` | Match PMD `typescript` granularity for `.ts/.tsx` (split template literals into atoms, collapse regexp). On by default. |
@@ -287,6 +288,7 @@ Because the tokens are identical and the match engine is a faithful port of PMD'
 | PMD CPD algorithm parity | ✅ | — | ➖ |
 | CI baseline (fail only on new) | ✅ committed fingerprint file | ➖ | ⚠️ via on‑disk cache¹ |
 | SARIF / GitHub Code Scanning | ✅ | ➖ | ✅ |
+| `.gitignore` aware | ✅ (on by default, prunes walk) | ➖ | ✅ |
 | Install size | tiny (1 dep) | JVM required | npm package |
 
 ¹ jscpd derives "new vs known" from a persistent store (LevelDB) that you must keep between runs; clone-alert commits a small, reviewable JSON baseline and stays stateless.

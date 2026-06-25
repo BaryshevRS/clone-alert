@@ -259,6 +259,47 @@ test('SARIF honors the baseline (only new clones become results)', async () => {
     expect(JSON.parse(stdout).runs[0].results).toHaveLength(0);
 });
 
+test('skips files matched by .gitignore by default and scans them with --no-gitignore', async () => {
+    const fixture = await makeFixture('gitignore');
+    await writeFile(path.join(fixture, 'a.ts'), DUP_BLOCK);
+    await writeFile(path.join(fixture, 'b.ts'), DUP_BLOCK.replace('duplicateOne', 'duplicateTwo'));
+    await writeFile(path.join(fixture, '.gitignore'), 'b.ts\n');
+
+    // b.ts is ignored, so a.ts has no pair and nothing is reported.
+    const ignored = await execFileAsync(process.execPath, [cli, '--minimum-tokens', '5', '--files', fixture], {
+        cwd: root,
+    });
+    expect(ignored.stdout).toBe('');
+
+    // --no-gitignore brings b.ts back and the duplication surfaces.
+    await expect(
+        execFileAsync(
+            process.execPath,
+            [cli, '--minimum-tokens', '5', '--files', fixture, '--no-gitignore', '--fail-on-violation'],
+            {
+                cwd: root,
+            }
+        )
+    ).rejects.toMatchObject({ code: 4 });
+});
+
+test('honors a repo-root .gitignore when scanning a subdirectory', async () => {
+    const fixture = await makeFixture('gitignore-ancestor');
+    await mkdir(path.join(fixture, '.git'), { recursive: true });
+    await mkdir(path.join(fixture, 'src', 'vendor'), { recursive: true });
+    await writeFile(path.join(fixture, '.gitignore'), 'src/vendor/\n');
+    await writeFile(path.join(fixture, 'src', 'a.ts'), DUP_BLOCK);
+    await writeFile(path.join(fixture, 'src', 'vendor', 'b.ts'), DUP_BLOCK.replace('duplicateOne', 'duplicateTwo'));
+
+    const result = await execFileAsync(
+        process.execPath,
+        [cli, '--minimum-tokens', '5', '--files', path.join(fixture, 'src')],
+        { cwd: root }
+    );
+    // The vendored copy is pruned via the parent .gitignore, so no duplication remains.
+    expect(result.stdout).toBe('');
+});
+
 test('--update-baseline without --baseline is an error', async () => {
     const fixture = await makeFixture('baseline-missing-flag');
     await writeFile(path.join(fixture, 'a.ts'), DUP_BLOCK);

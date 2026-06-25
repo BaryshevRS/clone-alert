@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { type CloneRecord, fingerprint, readBaseline, writeBaseline } from './baseline';
 import type { Match } from './core';
+import { collectFiles, toPosix } from './files';
 import { Cpd, type CpdOptions, type MatchLocation } from './index';
 
 type ReportFormat = 'text' | 'xml' | 'json' | 'sarif';
@@ -12,6 +13,7 @@ interface CliOptions extends CpdOptions {
     paths: string[];
     extensions: Set<string>;
     excludePatterns: string[];
+    respectGitignore: boolean;
     format: ReportFormat;
     failOnViolation: boolean;
     baselinePath?: string;
@@ -45,6 +47,9 @@ Options:
                                   GitHub Code Scanning.
   --extensions <ext[,ext...]>     Extensions to include. Default: ts,tsx,js,jsx,vue,svelte,html.
   --exclude <glob[,glob...]>      Exclude files or directories. Can be repeated.
+  --gitignore                     Skip files ignored by .gitignore (nested files
+                                  honored, within the git repo). Default.
+  --no-gitignore                  Scan files even if .gitignore would ignore them.
   --ignore-identifiers            Normalize identifiers.
   --no-ignore-identifiers         Compare exact identifiers. Default.
   --ignore-literals               Normalize literals.
@@ -108,7 +113,7 @@ function main(argv: string[]): number {
 
     let files: string[];
     try {
-        files = collectFiles(options.paths, options.extensions, options.excludePatterns);
+        files = collectFiles(options.paths, options.extensions, options.excludePatterns, options.respectGitignore);
     } catch (error) {
         console.error(`clone-alert: ${(error as Error).message}`);
         return 2;
@@ -179,6 +184,7 @@ function parseArgs(argv: string[]): CliOptions {
     const paths: string[] = [];
     const extensions = new Set(DEFAULT_EXTENSIONS);
     const excludePatterns: string[] = [];
+    let respectGitignore = true;
     let minTileSize = 50;
     let ignoreIdentifiers = false;
     let ignoreLiterals = false;
@@ -244,6 +250,14 @@ function parseArgs(argv: string[]): CliOptions {
         }
         if (arg.startsWith('--exclude=')) {
             excludePatterns.push(...splitList(arg.slice('--exclude='.length)));
+            continue;
+        }
+        if (arg === '--gitignore') {
+            respectGitignore = true;
+            continue;
+        }
+        if (arg === '--no-gitignore') {
+            respectGitignore = false;
             continue;
         }
         if (arg === '--ignore-identifiers') {
@@ -320,6 +334,7 @@ function parseArgs(argv: string[]): CliOptions {
         paths,
         extensions,
         excludePatterns,
+        respectGitignore,
         minTileSize,
         ignoreIdentifiers,
         ignoreLiterals,
@@ -369,39 +384,6 @@ function replaceExtensions(target: Set<string>, value: string): void {
     for (const ext of splitList(value)) {
         target.add(ext.startsWith('.') ? ext.toLowerCase() : `.${ext.toLowerCase()}`);
     }
-}
-
-function collectFiles(paths: string[], extensions: Set<string>, excludePatterns: string[] = []): string[] {
-    const files: string[] = [];
-    const seen = new Set<string>();
-    const excludeMatchers = excludePatterns.map((pattern) => globToRegExp(toPosix(pattern)));
-
-    const visit = (entry: string) => {
-        const full = path.resolve(entry);
-        if (!fs.existsSync(full)) {
-            throw new Error(`path does not exist: ${entry}`);
-        }
-
-        const stat = fs.statSync(full);
-        if (stat.isDirectory()) {
-            if (isExcluded(`${full}${path.sep}`, excludeMatchers)) return;
-            for (const child of fs.readdirSync(full).sort()) {
-                if (child === 'node_modules' || child === '.git' || child === 'dist') continue;
-                visit(path.join(full, child));
-            }
-            return;
-        }
-
-        if (!stat.isFile()) return;
-        if (isExcluded(full, excludeMatchers)) return;
-        if (!extensions.has(path.extname(full).toLowerCase())) return;
-        if (seen.has(full)) return;
-        seen.add(full);
-        files.push(full);
-    };
-
-    for (const entry of paths) visit(entry);
-    return files;
 }
 
 function formatReport(format: ReportFormat, cpd: Cpd, matches: Match[]): string {
@@ -511,37 +493,6 @@ function formatXml(matches: Match[], cpd: Cpd): string {
     }
     lines.push('</pmd-cpd>');
     return `${lines.join('\n')}\n`;
-}
-
-function isExcluded(filePath: string, matchers: RegExp[]): boolean {
-    const normalized = toPosix(filePath);
-    return matchers.some((matcher) => matcher.test(normalized));
-}
-
-function toPosix(value: string): string {
-    return value.split(path.sep).join('/');
-}
-
-function globToRegExp(pattern: string): RegExp {
-    let source = '';
-    for (let index = 0; index < pattern.length; index++) {
-        const char = pattern[index];
-        if (char === '*') {
-            if (pattern[index + 1] === '*') {
-                source += '.*';
-                index++;
-            } else {
-                source += '[^/]*';
-            }
-            continue;
-        }
-        source += escapeRegExp(char);
-    }
-    return new RegExp(`^${source}$`);
-}
-
-function escapeRegExp(char: string): string {
-    return /[\\^$+?.()|[\]{}]/.test(char) ? `\\${char}` : char;
 }
 
 function escapeXml(value: string): string {
