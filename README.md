@@ -6,6 +6,7 @@
 [![license](https://img.shields.io/npm/l/clone-alert.svg)](./LICENSE)
 [![node](https://img.shields.io/node/v/clone-alert.svg)](https://nodejs.org)
 [![types](https://img.shields.io/npm/types/clone-alert.svg)](https://www.npmjs.com/package/clone-alert)
+[![clone-alert](assets/clone-alert-badge.svg)](#duplication-badge)
 
 **clone-alert** finds duplicated and copy‑pasted code across your codebase by comparing **token streams** — the same proven approach as [PMD CPD](https://pmd.github.io/) (Copy‑Paste Detector), but built natively for the JavaScript/TypeScript ecosystem and your frontend templates. Catch code clones, enforce **DRY**, reduce technical debt, and fail your build when duplication creeps in.
 
@@ -231,6 +232,36 @@ jobs:
 ```
 
 Combine it with a committed `--baseline` to surface only the duplications added after adoption.
+
+## Duplication badge
+
+Show off how clean your codebase is. `--format badge` prints a self‑contained SVG badge with your duplication percentage to stdout — redirect it to a file, commit it, and drop it into your README:
+
+```sh
+clone-alert src --format badge --no-fail-on-violation > assets/clone-alert-badge.svg
+```
+
+```md
+[![clone-alert](assets/clone-alert-badge.svg)](https://github.com/BaryshevRS/clone-alert)
+```
+
+The color comes from a fixed scale, tuned to reward near‑zero duplication:
+
+| Result | Color | |
+| --- | --- | --- |
+| **0 clones** | 🟢 bright green | the flex — zero copy‑paste |
+| **≤ 3%** | 🟢 green | clean |
+| **≤ 10%** | 🟡 yellow | has some debt |
+| **> 10%** | 🔴 red | needs attention |
+
+The percentage is `duplicated lines / total scanned lines`, so it tracks your chosen `--minimum-tokens` (and which files you scan — exclude `**/*.test.*` and fixtures to badge production code only). Regenerate it in CI to keep it fresh:
+
+```yaml
+      - run: npx clone-alert src --format badge --no-fail-on-violation > assets/clone-alert-badge.svg
+      # then commit the file, or upload it as a workflow artifact / to a gist
+```
+
+> clone-alert's own badge above is generated this way, from `src` at the default `--minimum-tokens 50`.
 
 ## Programmatic API
 

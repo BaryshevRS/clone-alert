@@ -447,8 +447,8 @@ test('--format badge prints a green 0% SVG when there are no duplicates', async 
     );
 
     expect(stdout).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
-    expect(stdout).toContain('aria-label="duplication: 0.0%"');
-    expect(stdout).toContain('#4c1'); // green
+    expect(stdout).toContain('aria-label="clone-alert: 0 clones"');
+    expect(stdout).toContain('#44cc11'); // bright green hero
 });
 
 test('--format badge reports the percentage and a non-green color when code duplicates', async () => {
@@ -460,9 +460,9 @@ test('--format badge reports the percentage and a non-green color when code dupl
         { cwd: root }
     );
 
-    expect(stdout).toMatch(/aria-label="duplication: \d+\.\d%"/);
-    expect(stdout).not.toContain('aria-label="duplication: 0.0%"');
-    expect(stdout).not.toContain('#4c1'); // these fixtures are mostly clone -> not green
+    expect(stdout).toMatch(/aria-label="clone-alert: \d+\.\d%"/);
+    expect(stdout).not.toContain('0 clones');
+    expect(stdout).not.toContain('#44cc11'); // these fixtures are mostly clone -> not the hero green
 });
 
 test('text report ends with a duplication-stats footer', async () => {

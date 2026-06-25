@@ -713,10 +713,20 @@ function formatAi(matches: Match[], cpd: Cpd): string {
 // stdout (redirect it to a file). Marketing trinket, not a gate: the color comes
 // from a fixed scale, no --threshold flag. Always emitted, including 0% (green).
 function formatBadge(matches: Match[], cpd: Cpd): string {
-    const percentage = computeStats(matches, cpd).percentage;
-    const label = 'duplication';
-    const value = `${percentage.toFixed(1)}%`;
-    const color = percentage < 5 ? '#4c1' : percentage < 10 ? '#dfb317' : percentage < 20 ? '#fe7d37' : '#e05d44';
+    const stats = computeStats(matches, cpd);
+    const percentage = stats.percentage;
+    const label = 'clone-alert';
+    // Marketing scale: reward near-zero so clean projects proudly display green.
+    // Zero clones is the hero state; the rest degrades green -> yellow -> red.
+    const value = stats.clones === 0 ? '0 clones' : `${percentage.toFixed(1)}%`;
+    const color =
+        stats.clones === 0
+            ? '#44cc11' // bright green — the flex
+            : percentage <= 3
+              ? '#97ca00' // green — clean
+              : percentage <= 10
+                ? '#dfb317' // yellow — has debt
+                : '#e05d44'; // red — bad
 
     // ~6.5px per glyph in Verdana 11 + side padding, matching shields' geometry.
     const labelW = Math.round(label.length * 6.5 + 10);
