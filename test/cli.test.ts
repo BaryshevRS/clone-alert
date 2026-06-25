@@ -371,6 +371,52 @@ test('--format csv_with_linecount_per_file omits the header', async () => {
     expect(lines[0].match(/"/g)).toHaveLength(4);
 });
 
+test('--format xml embeds the duplicated code in a codefragment (like PMD)', async () => {
+    const fixture = await dupFixture('xml-fragment');
+
+    const { stdout } = await execFileAsync(
+        process.execPath,
+        [cli, '--minimum-tokens', '5', '--files', fixture, '--format', 'xml', '--no-fail-on-violation'],
+        { cwd: root }
+    );
+
+    expect(stdout).toContain('<codefragment><![CDATA[');
+    expect(stdout).toContain(']]></codefragment>');
+    // The CDATA carries the shared body lines verbatim.
+    expect(stdout).toMatch(/<codefragment><!\[CDATA\[[\s\S]*const alpha = 1;[\s\S]*\]\]><\/codefragment>/);
+});
+
+test('--format json carries the duplicated code in a fragment field (like jscpd)', async () => {
+    const fixture = await dupFixture('json-fragment');
+
+    const { stdout } = await execFileAsync(
+        process.execPath,
+        [cli, '--minimum-tokens', '5', '--files', fixture, '--format', 'json', '--no-fail-on-violation'],
+        { cwd: root }
+    );
+
+    const report = JSON.parse(stdout) as { duplicates: Array<{ fragment: string }> };
+    expect(report.duplicates[0].fragment).toContain('const alpha = 1;');
+    expect(report.duplicates[0].fragment).toContain('\n'); // multi-line source preserved
+});
+
+test('--format markdown writes a report with a fenced code block of the clone', async () => {
+    const fixture = await dupFixture('markdown');
+
+    const { stdout } = await execFileAsync(
+        process.execPath,
+        [cli, '--minimum-tokens', '5', '--files', fixture, '--format', 'markdown', '--no-fail-on-violation'],
+        { cwd: root }
+    );
+
+    expect(stdout).toContain('# Copy/paste detection report');
+    expect(stdout).toMatch(/> Found 1 clone\./);
+    expect(stdout).toMatch(/## Clone \(\d+ tokens, 2 occurrences\)/);
+    expect(stdout).toContain('a.ts` [');
+    // The duplicated body sits inside a fenced block.
+    expect(stdout).toMatch(/```\n[\s\S]*const alpha = 1;[\s\S]*\n```/);
+});
+
 test('--skip-duplicate-files skips same-name same-length copies', async () => {
     const fixture = await makeFixture('skip-dup');
     await mkdir(path.join(fixture, 'a'), { recursive: true });

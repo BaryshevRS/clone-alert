@@ -37,6 +37,8 @@ const HTML_EXT = new Set(['.html', '.htm']);
 export class Cpd {
     private core: CpdCore;
     private opts: Required<CpdOptions>;
+    /** Original source per file, retained so reporters can emit the duplicated code. */
+    private sources = new Map<string, string>();
 
     constructor(opts: CpdOptions = {}) {
         this.opts = {
@@ -56,6 +58,7 @@ export class Cpd {
     }
 
     public addSource(filePath: string, source: string) {
+        this.sources.set(filePath, source);
         const ext = path.extname(filePath).toLowerCase();
         const tok: TokenizeOptions = {
             ignoreIdentifiers: this.opts.ignoreIdentifiers,
@@ -134,6 +137,24 @@ export class Cpd {
             endLine: end.endLine,
             endColumn: end.endColumn,
         };
+    }
+
+    /**
+     * The duplicated source for a match: the full lines [startLine, endLine] of its
+     * first occurrence, like PMD's `getSourceCodeSlice`. Empty string if the file's
+     * source was not retained (e.g. a baseline-only match). Used by the xml/json/
+     * markdown reporters to embed the code fragment.
+     */
+    public codeFragment(match: Match): string {
+        const location = this.locationForMark(match.marks[0], match.tokenCount);
+        const source = this.sources.get(location.path);
+        if (source === undefined) {
+            return '';
+        }
+        return source
+            .split('\n')
+            .slice(location.startLine - 1, location.endLine)
+            .join('\n');
     }
 
     /** Plain text report for eyeballing / diff tests. */

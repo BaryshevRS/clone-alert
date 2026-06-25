@@ -7,7 +7,7 @@ import type { Match } from './core';
 import { collectFiles, toPosix } from './files';
 import { Cpd, type CpdOptions, type MatchLocation } from './index';
 
-type ReportFormat = 'text' | 'xml' | 'json' | 'sarif' | 'csv' | 'csv_with_linecount_per_file';
+type ReportFormat = 'text' | 'xml' | 'json' | 'sarif' | 'csv' | 'csv_with_linecount_per_file' | 'markdown';
 
 interface CliOptions extends CpdOptions {
     paths: string[];
@@ -48,8 +48,9 @@ Options:
   --minimum-tokens <n>            Minimum duplicated token span. Default: 50.
   --minimum-tile-size <n>         Alias for --minimum-tokens.
   --format <fmt>                  Report format: text (default), xml, json, sarif,
-                                  csv, csv_with_linecount_per_file. sarif targets
-                                  GitHub Code Scanning.
+                                  csv, csv_with_linecount_per_file, markdown. sarif
+                                  targets GitHub Code Scanning; xml/json/markdown
+                                  embed the duplicated code.
   --extensions <ext[,ext...]>     Extensions to include. Default: ts,tsx,js,jsx,vue,svelte,html.
   --exclude <glob[,glob...]>      Exclude files or directories. Can be repeated.
   --non-recursive                 Scan only the top level of each directory.
@@ -435,7 +436,15 @@ function parsePositiveInteger(value: string, option: string): number {
     return parsed;
 }
 
-const REPORT_FORMATS: ReportFormat[] = ['text', 'xml', 'json', 'sarif', 'csv', 'csv_with_linecount_per_file'];
+const REPORT_FORMATS: ReportFormat[] = [
+    'text',
+    'xml',
+    'json',
+    'sarif',
+    'csv',
+    'csv_with_linecount_per_file',
+    'markdown',
+];
 
 function parseFormat(value: string): ReportFormat {
     if ((REPORT_FORMATS as string[]).includes(value)) {
@@ -479,6 +488,9 @@ function formatReport(format: ReportFormat, cpd: Cpd, matches: Match[]): string 
     }
     if (format === 'csv_with_linecount_per_file') {
         return formatCsvWithLinecountPerFile(matches, cpd);
+    }
+    if (format === 'markdown') {
+        return formatMarkdown(matches, cpd);
     }
     return cpd.report(matches);
 }
@@ -589,6 +601,8 @@ function matchToJson(match: Match, cpd: Cpd) {
     return {
         lines: Math.max(0, ...files.map((file) => file.endLine - file.startLine + 1)),
         tokens: match.tokenCount,
+        // The duplicated source itself, like jscpd's `fragment` field.
+        fragment: cpd.codeFragment(match),
         files,
     };
 }
@@ -606,6 +620,9 @@ function formatXml(matches: Match[], cpd: Cpd): string {
                 `    <file path="${escapeXml(location.path)}" line="${location.startLine}" endline="${location.endLine}" column="${location.startColumn}" endcolumn="${location.endColumn}" />`
             );
         }
+        // Like PMD's XMLRenderer: one <codefragment> per duplication with the source
+        // slice of the first occurrence, after the <file> elements.
+        lines.push(`    <codefragment><![CDATA[${escapeCdata(cpd.codeFragment(match))}]]></codefragment>`);
         lines.push('  </duplication>');
     }
     lines.push('</pmd-cpd>');
@@ -614,6 +631,34 @@ function formatXml(matches: Match[], cpd: Cpd): string {
 
 function escapeXml(value: string): string {
     return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// CDATA cannot contain the `]]>` terminator; split it across two sections so the
+// embedded source survives verbatim.
+function escapeCdata(value: string): string {
+    return value.replace(/]]>/g, ']]]]><![CDATA[>');
+}
+
+// jscpd-style markdown: a title, a one-line summary, then per duplication two
+// occurrence locations and a fenced code block with the duplicated source.
+function formatMarkdown(matches: Match[], cpd: Cpd): string {
+    const out = ['# Copy/paste detection report', ''];
+    if (matches.length === 0) {
+        out.push('No duplicates found.', '');
+        return `${out.join('\n')}\n`;
+    }
+    out.push(`> Found ${matches.length} ${matches.length === 1 ? 'clone' : 'clones'}.`, '');
+    for (const match of matches) {
+        const locations = match.marks.map((mark) => cpd.locationForMark(mark, match.tokenCount));
+        out.push(`## Clone (${match.tokenCount} tokens, ${match.markCount} occurrences)`, '');
+        for (const location of locations) {
+            out.push(
+                ` - \`${toPosix(location.path)}\` [${location.startLine}:${location.startColumn} - ${location.endLine}:${location.endColumn}]`
+            );
+        }
+        out.push('', '```', cpd.codeFragment(match), '```', '');
+    }
+    return `${out.join('\n')}\n`;
 }
 
 function readVersion(): string {
