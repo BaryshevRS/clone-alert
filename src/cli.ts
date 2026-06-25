@@ -8,7 +8,16 @@ import { collectFiles, toPosix } from './files';
 import { Cpd, type CpdOptions, type MatchLocation } from './index';
 import { computeStats, formatStatsLine } from './stats';
 
-type ReportFormat = 'text' | 'xml' | 'json' | 'sarif' | 'csv' | 'csv_with_linecount_per_file' | 'markdown' | 'ai';
+type ReportFormat =
+    | 'text'
+    | 'xml'
+    | 'json'
+    | 'sarif'
+    | 'csv'
+    | 'csv_with_linecount_per_file'
+    | 'markdown'
+    | 'ai'
+    | 'badge';
 
 interface CliOptions extends CpdOptions {
     paths: string[];
@@ -52,7 +61,8 @@ Options:
                                   csv, csv_with_linecount_per_file, markdown, ai.
                                   sarif targets GitHub Code Scanning; xml/json/
                                   markdown embed the duplicated code; ai is a
-                                  compact, token-frugal listing for LLM pipelines.
+                                  compact, token-frugal listing for LLM pipelines;
+                                  badge prints an SVG duplication badge to stdout.
   --extensions <ext[,ext...]>     Extensions to include. Default: ts,tsx,js,jsx,vue,svelte,html.
   --exclude <glob[,glob...]>      Exclude files or directories. Can be repeated.
   --non-recursive                 Scan only the top level of each directory.
@@ -447,6 +457,7 @@ const REPORT_FORMATS: ReportFormat[] = [
     'csv_with_linecount_per_file',
     'markdown',
     'ai',
+    'badge',
 ];
 
 function parseFormat(value: string): ReportFormat {
@@ -497,6 +508,9 @@ function formatReport(format: ReportFormat, cpd: Cpd, matches: Match[]): string 
     }
     if (format === 'ai') {
         return formatAi(matches, cpd);
+    }
+    if (format === 'badge') {
+        return formatBadge(matches, cpd);
     }
     const text = cpd.report(matches);
     if (matches.length === 0) {
@@ -693,6 +707,42 @@ function formatAi(matches: Match[], cpd: Cpd): string {
     );
     lines.push('---', formatStatsLine(computeStats(matches, cpd)));
     return `${lines.join('\n')}\n`;
+}
+
+// A shields.io-style flat SVG badge with the duplication percentage, printed to
+// stdout (redirect it to a file). Marketing trinket, not a gate: the color comes
+// from a fixed scale, no --threshold flag. Always emitted, including 0% (green).
+function formatBadge(matches: Match[], cpd: Cpd): string {
+    const percentage = computeStats(matches, cpd).percentage;
+    const label = 'duplication';
+    const value = `${percentage.toFixed(1)}%`;
+    const color = percentage < 5 ? '#4c1' : percentage < 10 ? '#dfb317' : percentage < 20 ? '#fe7d37' : '#e05d44';
+
+    // ~6.5px per glyph in Verdana 11 + side padding, matching shields' geometry.
+    const labelW = Math.round(label.length * 6.5 + 10);
+    const valueW = Math.round(value.length * 6.5 + 10);
+    const total = labelW + valueW;
+    const aria = `${label}: ${value}`;
+    // A drop-shadowed label centered at `mid` (in scale(.1) units), stretched to `width`.
+    const text = (mid: number, width: number, content: string) =>
+        `<text x="${mid}" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="${width}">${content}</text>
+    <text x="${mid}" y="140" transform="scale(.1)" textLength="${width}">${content}</text>`;
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${total}" height="20" role="img" aria-label="${aria}">
+  <title>${aria}</title>
+  <linearGradient id="s" x2="0" y2="100%"><stop offset="0" stop-color="#bbb" stop-opacity=".1"/><stop offset="1" stop-opacity=".1"/></linearGradient>
+  <clipPath id="r"><rect width="${total}" height="20" rx="3" fill="#fff"/></clipPath>
+  <g clip-path="url(#r)">
+    <rect width="${labelW}" height="20" fill="#555"/>
+    <rect x="${labelW}" width="${valueW}" height="20" fill="${color}"/>
+    <rect width="${total}" height="20" fill="url(#s)"/>
+  </g>
+  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="110" text-rendering="geometricPrecision">
+    ${text((labelW / 2) * 10, (labelW - 10) * 10, label)}
+    ${text((labelW + valueW / 2) * 10, (valueW - 10) * 10, value)}
+  </g>
+</svg>
+`;
 }
 
 // Longest shared directory prefix (ending at a `/`) of posix paths, so we strip

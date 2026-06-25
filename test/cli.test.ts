@@ -435,6 +435,36 @@ test('--format ai emits a compact listing with a duplication-stats summary', asy
     expect(stdout).not.toContain('const alpha');
 });
 
+test('--format badge prints a green 0% SVG when there are no duplicates', async () => {
+    const fixture = await makeFixture('badge-clean');
+    await writeFile(path.join(fixture, 'a.ts'), 'export const a = 1;\n');
+    await writeFile(path.join(fixture, 'b.ts'), 'export const b = 2;\n');
+
+    const { stdout } = await execFileAsync(
+        process.execPath,
+        [cli, '--minimum-tokens', '10', '--files', fixture, '--format', 'badge'],
+        { cwd: root }
+    );
+
+    expect(stdout).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
+    expect(stdout).toContain('aria-label="duplication: 0.0%"');
+    expect(stdout).toContain('#4c1'); // green
+});
+
+test('--format badge reports the percentage and a non-green color when code duplicates', async () => {
+    const fixture = await dupFixture('badge-dirty');
+
+    const { stdout } = await execFileAsync(
+        process.execPath,
+        [cli, '--minimum-tokens', '5', '--files', fixture, '--format', 'badge', '--no-fail-on-violation'],
+        { cwd: root }
+    );
+
+    expect(stdout).toMatch(/aria-label="duplication: \d+\.\d%"/);
+    expect(stdout).not.toContain('aria-label="duplication: 0.0%"');
+    expect(stdout).not.toContain('#4c1'); // these fixtures are mostly clone -> not green
+});
+
 test('text report ends with a duplication-stats footer', async () => {
     const fixture = await dupFixture('text-footer');
 
