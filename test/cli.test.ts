@@ -417,6 +417,37 @@ test('--format markdown writes a report with a fenced code block of the clone', 
     expect(stdout).toMatch(/```\n[\s\S]*const alpha = 1;[\s\S]*\n```/);
 });
 
+test('--format ai emits a compact listing with a duplication-stats summary', async () => {
+    const fixture = await dupFixture('ai');
+
+    const { stdout } = await execFileAsync(
+        process.execPath,
+        [cli, '--minimum-tokens', '5', '--files', fixture, '--format', 'ai', '--no-fail-on-violation'],
+        { cwd: root }
+    );
+
+    const lines = stdout.trim().split('\n');
+    // One clone line with both occurrences joined by ` ~ `, the shared dir stripped.
+    expect(lines[0]).toMatch(/^a\.ts:\d+-\d+ ~ b\.ts:\d+-\d+$/);
+    expect(lines.at(-2)).toBe('---');
+    expect(lines.at(-1)).toMatch(/^1 clone · \d+\.\d{2}% duplicated lines$/);
+    // Compact: no source code in the output.
+    expect(stdout).not.toContain('const alpha');
+});
+
+test('text report ends with a duplication-stats footer', async () => {
+    const fixture = await dupFixture('text-footer');
+
+    const { stdout } = await execFileAsync(
+        process.execPath,
+        [cli, '--minimum-tokens', '5', '--files', fixture, '--no-fail-on-violation'],
+        { cwd: root }
+    );
+
+    expect(stdout).toMatch(/Found a \d+ token \(2 occurrences\) duplication:/);
+    expect(stdout.trim().split('\n').at(-1)).toMatch(/^1 clone · \d+\.\d{2}% duplicated lines$/);
+});
+
 test('--skip-duplicate-files skips same-name same-length copies', async () => {
     const fixture = await makeFixture('skip-dup');
     await mkdir(path.join(fixture, 'a'), { recursive: true });

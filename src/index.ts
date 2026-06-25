@@ -157,6 +157,23 @@ export class Cpd {
             .join('\n');
     }
 
+    /**
+     * Total physical line count across all added sources — the denominator for
+     * the duplication percentage (see `stats.ts`). A trailing newline is not
+     * counted as an extra line.
+     */
+    public totalLines(): number {
+        let total = 0;
+        for (const source of this.sources.values()) {
+            if (source.length === 0) {
+                continue;
+            }
+            const lines = source.split('\n').length;
+            total += source.endsWith('\n') ? lines - 1 : lines;
+        }
+        return total;
+    }
+
     /** Plain text report for eyeballing / diff tests. */
     public report(matches: Match[] = this.run()): string {
         const lines: string[] = [];

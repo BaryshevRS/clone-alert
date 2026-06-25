@@ -6,8 +6,9 @@ import { type CloneRecord, fingerprint, readBaseline, writeBaseline } from './ba
 import type { Match } from './core';
 import { collectFiles, toPosix } from './files';
 import { Cpd, type CpdOptions, type MatchLocation } from './index';
+import { computeStats, formatStatsLine } from './stats';
 
-type ReportFormat = 'text' | 'xml' | 'json' | 'sarif' | 'csv' | 'csv_with_linecount_per_file' | 'markdown';
+type ReportFormat = 'text' | 'xml' | 'json' | 'sarif' | 'csv' | 'csv_with_linecount_per_file' | 'markdown' | 'ai';
 
 interface CliOptions extends CpdOptions {
     paths: string[];
@@ -48,9 +49,10 @@ Options:
   --minimum-tokens <n>            Minimum duplicated token span. Default: 50.
   --minimum-tile-size <n>         Alias for --minimum-tokens.
   --format <fmt>                  Report format: text (default), xml, json, sarif,
-                                  csv, csv_with_linecount_per_file, markdown. sarif
-                                  targets GitHub Code Scanning; xml/json/markdown
-                                  embed the duplicated code.
+                                  csv, csv_with_linecount_per_file, markdown, ai.
+                                  sarif targets GitHub Code Scanning; xml/json/
+                                  markdown embed the duplicated code; ai is a
+                                  compact, token-frugal listing for LLM pipelines.
   --extensions <ext[,ext...]>     Extensions to include. Default: ts,tsx,js,jsx,vue,svelte,html.
   --exclude <glob[,glob...]>      Exclude files or directories. Can be repeated.
   --non-recursive                 Scan only the top level of each directory.
@@ -444,6 +446,7 @@ const REPORT_FORMATS: ReportFormat[] = [
     'csv',
     'csv_with_linecount_per_file',
     'markdown',
+    'ai',
 ];
 
 function parseFormat(value: string): ReportFormat {
@@ -492,7 +495,15 @@ function formatReport(format: ReportFormat, cpd: Cpd, matches: Match[]): string 
     if (format === 'markdown') {
         return formatMarkdown(matches, cpd);
     }
-    return cpd.report(matches);
+    if (format === 'ai') {
+        return formatAi(matches, cpd);
+    }
+    const text = cpd.report(matches);
+    if (matches.length === 0) {
+        return text;
+    }
+    // Footer with the aggregate duplication stats, like jscpd's summary line.
+    return `${text}${formatStatsLine(computeStats(matches, cpd))}\n`;
 }
 
 // Mirrors PMD's CSVRenderer: a `lines,tokens,occurrences` header, then per
@@ -659,6 +670,48 @@ function formatMarkdown(matches: Match[], cpd: Cpd): string {
         out.push('', '```', cpd.codeFragment(match), '```', '');
     }
     return `${out.join('\n')}\n`;
+}
+
+// Compact, token-frugal listing for LLM/agent pipelines, modelled on jscpd's `ai`
+// reporter: one line per duplication (occurrences joined by ` ~ `), a shared
+// directory prefix stripped to save tokens, then a `---` and the stats summary.
+// No code, no colors.
+function formatAi(matches: Match[], cpd: Cpd): string {
+    if (matches.length === 0) {
+        return '';
+    }
+    const locationsByMatch = matches.map((match) =>
+        match.marks.map((mark) => cpd.locationForMark(mark, match.tokenCount))
+    );
+    const prefix = commonDirPrefix(locationsByMatch.flat().map((location) => toPosix(location.path)));
+    const lines = locationsByMatch.map((locations) =>
+        locations
+            .map(
+                (location) => `${toPosix(location.path).slice(prefix.length)}:${location.startLine}-${location.endLine}`
+            )
+            .join(' ~ ')
+    );
+    lines.push('---', formatStatsLine(computeStats(matches, cpd)));
+    return `${lines.join('\n')}\n`;
+}
+
+// Longest shared directory prefix (ending at a `/`) of posix paths, so we strip
+// whole directories rather than a partial filename.
+function commonDirPrefix(paths: string[]): string {
+    if (paths.length === 0) {
+        return '';
+    }
+    let prefix = paths[0];
+    for (const candidate of paths) {
+        while (!candidate.startsWith(prefix)) {
+            prefix = prefix.slice(0, -1);
+        }
+        if (prefix === '') {
+            return '';
+        }
+    }
+    const slash = prefix.lastIndexOf('/');
+    return slash >= 0 ? prefix.slice(0, slash + 1) : '';
 }
 
 function readVersion(): string {

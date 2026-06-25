@@ -89,7 +89,7 @@ clone-alert [options] [<path>...]
 | `--file-list <path>` | Read newline-separated paths to scan from a file. |
 | `--minimum-tokens <n>` | Minimum duplicated token span. Default: `50`. |
 | `--minimum-tile-size <n>` | Alias for `--minimum-tokens`. |
-| `--format <fmt>` | `text` (default), `xml`, `json`, `sarif`, `csv`, `csv_with_linecount_per_file`, `markdown`. `sarif` targets GitHub Code Scanning; the two `csv` formats mirror PMD's CSV renderers. `xml`/`json`/`markdown` embed the duplicated code (PMD's `<codefragment>`, a jscpd-style `fragment` field, and a fenced code block respectively). |
+| `--format <fmt>` | `text` (default), `xml`, `json`, `sarif`, `csv`, `csv_with_linecount_per_file`, `markdown`, `ai`. `sarif` targets GitHub Code Scanning; the two `csv` formats mirror PMD's CSV renderers. `xml`/`json`/`markdown` embed the duplicated code (PMD's `<codefragment>`, a jscpd-style `fragment` field, and a fenced code block respectively). `ai` is a compact, token-frugal listing for LLM pipelines. `text` and `ai` end with a `N clones · X% duplicated lines` summary. |
 | `--extensions <ext[,ext...]>` | Extensions to include during recursive scans. |
 | `--exclude <glob[,glob...]>` | Exclude files or directories (glob). Can be repeated. Prunes the walk, not a post-filter — excluded directories are never read. |
 | `--non-recursive` | Scan only the top level of each directory. |
@@ -295,7 +295,7 @@ Because the tokens are identical and the match engine is a faithful port of PMD'
 | PMD CPD algorithm parity | ✅ | — | ➖ |
 | CI baseline (fail only on new) | ✅ committed fingerprint file | ➖ | ⚠️ via on‑disk cache¹ |
 | SARIF / GitHub Code Scanning | ✅ | ➖ | ✅ |
-| Report formats | text, xml, json, sarif, csv, markdown | text, xml, csv, vs | many |
+| Report formats | text, xml, json, sarif, csv, markdown, ai | text, xml, csv, vs | many |
 | PMD CLI flags (`--file-list`, `--non-recursive`, `--skip-duplicate-files`, `--skip-lexical-errors`) | ✅ | ✅ | ➖ |
 | `.gitignore` aware | ✅ (on by default, prunes walk) | ➖ | ✅ |
 | Install size | tiny (1 dep) | JVM required | npm package |
