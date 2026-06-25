@@ -238,7 +238,7 @@ Combine it with a committed `--baseline` to surface only the duplications added 
 Show off how clean your codebase is. `--format badge` prints a self‑contained SVG badge with your duplication percentage to stdout — redirect it to a file, commit it, and drop it into your README:
 
 ```sh
-clone-alert src --format badge --no-fail-on-violation > assets/clone-alert-badge.svg
+clone-alert src --minimum-tokens 70 --format badge --no-fail-on-violation > assets/clone-alert-badge.svg
 ```
 
 ```md
@@ -257,11 +257,11 @@ The color comes from a fixed scale, tuned to reward near‑zero duplication:
 The percentage is `duplicated lines / total scanned lines`, so it tracks your chosen `--minimum-tokens` (and which files you scan — exclude `**/*.test.*` and fixtures to badge production code only). Regenerate it in CI to keep it fresh:
 
 ```yaml
-      - run: npx clone-alert src --format badge --no-fail-on-violation > assets/clone-alert-badge.svg
+      - run: npx clone-alert src --minimum-tokens 70 --format badge --no-fail-on-violation > assets/clone-alert-badge.svg
       # then commit the file, or upload it as a workflow artifact / to a gist
 ```
 
-> clone-alert's own badge above is generated this way, from `src` at the default `--minimum-tokens 50`.
+> clone-alert's own badge above is generated this way, from `src` at `--minimum-tokens 70` — the same threshold its CI enforces, so it reads **0 clones**.
 
 ## Programmatic API
 
