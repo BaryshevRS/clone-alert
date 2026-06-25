@@ -23,6 +23,7 @@ npx clone-alert --minimum-tokens 50 --files src
 - 🧪 **Zero‑config CLI** — sensible defaults, recursive directory scan, `node_modules`/`.git`/`dist` skipped automatically.
 - 📦 **Tiny footprint** — a single runtime dependency (`typescript`). Framework parsers are **optional peer dependencies**, loaded only when needed.
 - 🛠 **CI‑ready** — `text`, `json`, and PMD‑style `xml` reports, plus `--fail-on-violation` (exit code `4`).
+- 📉 **Baseline for adoption** — accept the clones an existing project already has and fail CI only on **new** ones. Fingerprints are content‑based, so the baseline survives code moving around.
 - 🔇 **Inline suppression** — ignore known duplication with `CPD-OFF` / `CPD-ON` comment markers.
 
 ## Supported languages & frameworks
@@ -67,6 +68,10 @@ clone-alert --minimum-tokens 50 --files src --fail-on-violation
 
 # Machine‑readable output for dashboards
 clone-alert --format json --files src,packages > duplication.json
+
+# Adopt an existing project: accept today's clones, fail only on new ones
+clone-alert --files src --baseline .clone-alert-baseline.json --update-baseline
+clone-alert --files src --baseline .clone-alert-baseline.json --fail-on-violation
 ```
 
 ## Usage
@@ -93,6 +98,8 @@ clone-alert [options] [<path>...]
 | `--angular-inline-templates` | Also scan Angular `@Component` inline templates. |
 | `--skip-angular-inline-templates` | Do not scan inline Angular templates (explicit default). |
 | `--fail-on-violation` | Exit with code `4` when duplications are found. |
+| `--baseline <path>` | Ignore duplications recorded in this baseline file; report and fail only on **new** ones. Matched by content fingerprint, so accepted clones stay suppressed even after the code moves. |
+| `--update-baseline` | Write/regenerate the baseline file at `--baseline` with all current duplications, then exit `0`. Run once to adopt existing debt. |
 | `-h, --help` | Show help. |
 | `-V, --version` | Show version. |
 
@@ -159,6 +166,39 @@ const generatedTableB = { /* ... */ };
 // CPD-ON
 ```
 
+## Baseline (adopting an existing project)
+
+A fresh project can have thousands of pre‑existing clones — enough to light up CI red on day one. A **baseline** lets you accept that debt and gate only on what's added afterwards.
+
+Generate it once, commit it, then check against it in CI:
+
+```sh
+# 1. Record today's duplications (writes the file, exits 0)
+clone-alert --files src --baseline .clone-alert-baseline.json --update-baseline
+
+# 2. In CI: fail only on clones not in the baseline
+clone-alert --files src --baseline .clone-alert-baseline.json --fail-on-violation
+```
+
+The baseline is a small, sorted JSON file you commit and review in pull requests:
+
+```json
+{
+  "version": 1,
+  "clones": [
+    {
+      "fingerprint": "00a034a93cd6e7e3",
+      "tokens": 414,
+      "files": ["src/server/webkit/webview/wvPage.ts", "src/server/webkit/wkPage.ts"]
+    }
+  ]
+}
+```
+
+Each clone is matched by a **content fingerprint** hashed over its tokens only — no line numbers, no file paths. So a baselined clone stays suppressed when the code is moved, reformatted, or shifted by edits above it, and the file produces a stable, churn‑free diff. Introduce a genuinely new duplication and CI fails on that one alone. Re‑run `--update-baseline` to re‑adopt after an intentional change.
+
+> The baseline filters the already‑computed match set, so it adds no measurable cost to a scan — there's no separate cache to persist between CI runs.
+
 ## Programmatic API
 
 clone-alert ships with TypeScript types and a small Node API:
@@ -220,7 +260,10 @@ Because the tokens are identical and the match engine is a faithful port of PMD'
 | Svelte markup | ✅ (Svelte 5+) | ➖ | ➖ |
 | Angular templates | ✅ | ➖ | flat HTML only |
 | PMD CPD algorithm parity | ✅ | — | ➖ |
+| CI baseline (fail only on new) | ✅ committed fingerprint file | ➖ | ⚠️ via on‑disk cache¹ |
 | Install size | tiny (1 dep) | JVM required | npm package |
+
+¹ jscpd derives "new vs known" from a persistent store (LevelDB) that you must keep between runs; clone-alert commits a small, reviewable JSON baseline and stays stateless.
 
 ## Development
 

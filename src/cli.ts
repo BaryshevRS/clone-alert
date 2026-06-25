@@ -2,6 +2,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { type CloneRecord, fingerprint, readBaseline, writeBaseline } from './baseline';
 import type { Match } from './core';
 import { Cpd, type CpdOptions } from './index';
 
@@ -13,6 +14,8 @@ interface CliOptions extends CpdOptions {
     excludePatterns: string[];
     format: ReportFormat;
     failOnViolation: boolean;
+    baselinePath?: string;
+    updateBaseline: boolean;
 }
 
 const DEFAULT_EXTENSIONS = [
@@ -64,12 +67,21 @@ Options:
   --angular-inline-templates      Also scan Angular @Component inline templates.
   --skip-angular-inline-templates Do not scan inline Angular templates. Default.
   --fail-on-violation             Exit with code 4 when duplications are found.
+  --baseline <path>               Ignore duplications recorded in this baseline
+                                  file; report and fail only on new ones. Match is
+                                  by content fingerprint, so accepted clones stay
+                                  suppressed even after the code moves.
+  --update-baseline               Write/regenerate the baseline file at --baseline
+                                  with all current duplications, then exit 0. Run
+                                  this once to adopt the existing debt.
   -h, --help                      Show this help.
   -V, --version                   Show version.
 
 Examples:
   clone-alert --minimum-tokens 50 --files src
   clone-alert --minimum-tokens 30 --format xml src test
+  clone-alert src --baseline .clone-alert-baseline.json --update-baseline
+  clone-alert src --baseline .clone-alert-baseline.json --fail-on-violation
 `;
 
 function main(argv: string[]): number {
@@ -85,6 +97,11 @@ function main(argv: string[]): number {
     if (options.paths.length === 0) {
         console.error('clone-alert: missing files or directories to scan');
         console.error("Try 'clone-alert --help' for more information.");
+        return 2;
+    }
+
+    if (options.updateBaseline && !options.baselinePath) {
+        console.error('clone-alert: --update-baseline requires --baseline <path>');
         return 2;
     }
 
@@ -106,8 +123,55 @@ function main(argv: string[]): number {
     }
 
     const matches = cpd.run();
+
+    if (options.baselinePath) {
+        try {
+            return runWithBaseline(options, cpd, matches);
+        } catch (error) {
+            console.error(`clone-alert: ${(error as Error).message}`);
+            return 2;
+        }
+    }
+
     process.stdout.write(formatReport(options.format, cpd, matches));
     return options.failOnViolation && matches.length > 0 ? 4 : 0;
+}
+
+// Baseline handling. Detection is already done; this only writes (update) or
+// filters (read) the match set by content fingerprint, so it never touches the
+// hot path — cost is O(matches), not O(tokens).
+function runWithBaseline(options: CliOptions, cpd: Cpd, matches: Match[]): number {
+    const baselinePath = options.baselinePath as string;
+
+    if (options.updateBaseline) {
+        writeBaseline(
+            baselinePath,
+            matches.map((match) => toCloneRecord(match, cpd))
+        );
+        console.error(`clone-alert: wrote baseline with ${matches.length} duplication(s) to ${baselinePath}`);
+        return 0;
+    }
+
+    const known = readBaseline(baselinePath);
+    const fresh = matches.filter((match) => !known.has(fingerprint(cpd, match)));
+    const suppressed = matches.length - fresh.length;
+    if (suppressed > 0) {
+        console.error(`clone-alert: ${suppressed} known duplication(s) suppressed by baseline`);
+    }
+
+    process.stdout.write(formatReport(options.format, cpd, fresh));
+    return options.failOnViolation && fresh.length > 0 ? 4 : 0;
+}
+
+// Informational context for a baseline entry: token count plus the involved file
+// paths relative to cwd (so the file is portable across machines/CI). Line/column
+// are intentionally left out — the fingerprint already pins the content, and
+// omitting them keeps the baseline diff stable when code moves.
+function toCloneRecord(match: Match, cpd: Cpd): CloneRecord {
+    const files = Array.from(
+        new Set(match.marks.map((mark) => toPosix(path.relative(process.cwd(), mark.token.file))))
+    ).sort();
+    return { fingerprint: fingerprint(cpd, match), tokens: match.tokenCount, files };
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -123,6 +187,8 @@ function parseArgs(argv: string[]): CliOptions {
     let angularInlineTemplates = false;
     let format: ReportFormat = 'text';
     let failOnViolation = false;
+    let baselinePath: string | undefined;
+    let updateBaseline = false;
 
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
@@ -231,6 +297,18 @@ function parseArgs(argv: string[]): CliOptions {
             failOnViolation = true;
             continue;
         }
+        if (arg === '--baseline') {
+            baselinePath = requireValue(argv, ++i, arg);
+            continue;
+        }
+        if (arg.startsWith('--baseline=')) {
+            baselinePath = arg.slice('--baseline='.length);
+            continue;
+        }
+        if (arg === '--update-baseline') {
+            updateBaseline = true;
+            continue;
+        }
         if (arg.startsWith('-')) {
             throw new Error(`unknown option: ${arg}`);
         }
@@ -250,6 +328,8 @@ function parseArgs(argv: string[]): CliOptions {
         angularInlineTemplates,
         format,
         failOnViolation,
+        baselinePath,
+        updateBaseline,
     };
 }
 

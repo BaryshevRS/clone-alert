@@ -110,6 +110,20 @@ export class Cpd {
         return this.core.analyze();
     }
 
+    /**
+     * The token images of a match's span (any occurrence — all share the same
+     * content). Lets the baseline layer fingerprint a match without reaching into
+     * the engine's storage.
+     */
+    public spanImages(match: Match): string[] {
+        const start = match.marks[0].token.index;
+        const images = new Array<string>(match.tokenCount);
+        for (let k = 0; k < match.tokenCount; k++) {
+            images[k] = this.core.imageAt(start + k);
+        }
+        return images;
+    }
+
     public locationForMark(mark: Mark, tokenCount: number): MatchLocation {
         const start = mark.token;
         const end = this.core.entryAt(start.index + tokenCount - 1) ?? start;

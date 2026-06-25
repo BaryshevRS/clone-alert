@@ -204,6 +204,11 @@ export class CpdCore {
         );
     }
 
+    /** Interned image of the token at an absolute index. Caller guarantees range. */
+    public imageAt(index: number): string {
+        return this.idImages[this.ids[index]];
+    }
+
     public analyze(): Match[] {
         if (this.size < this.minTileSize) return [];
 

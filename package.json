@@ -95,7 +95,7 @@
   "devDependencies": {
     "@angular/compiler": "^22.0.2",
     "@biomejs/biome": "^2.5.0",
-    "@types/node": "^24.0.0",
+    "@types/node": "^24.13.2",
     "@vue/compiler-sfc": "^3.5.38",
     "knip": "^6.5.0",
     "svelte": "^5.56.3",
