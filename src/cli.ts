@@ -4,9 +4,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { type CloneRecord, fingerprint, readBaseline, writeBaseline } from './baseline';
 import type { Match } from './core';
-import { Cpd, type CpdOptions } from './index';
+import { Cpd, type CpdOptions, type MatchLocation } from './index';
 
-type ReportFormat = 'text' | 'xml' | 'json';
+type ReportFormat = 'text' | 'xml' | 'json' | 'sarif';
 
 interface CliOptions extends CpdOptions {
     paths: string[];
@@ -41,7 +41,8 @@ Options:
   --files <path[,path...]>        Files or directories to scan. Can be repeated.
   --minimum-tokens <n>            Minimum duplicated token span. Default: 50.
   --minimum-tile-size <n>         Alias for --minimum-tokens.
-  --format <text|xml|json>        Report format. Default: text.
+  --format <text|xml|json|sarif>  Report format. Default: text. sarif targets
+                                  GitHub Code Scanning.
   --extensions <ext[,ext...]>     Extensions to include. Default: ts,tsx,js,jsx,vue,svelte,html.
   --exclude <glob[,glob...]>      Exclude files or directories. Can be repeated.
   --ignore-identifiers            Normalize identifiers.
@@ -357,10 +358,10 @@ function parsePositiveInteger(value: string, option: string): number {
 }
 
 function parseFormat(value: string): ReportFormat {
-    if (value === 'text' || value === 'xml' || value === 'json') {
+    if (value === 'text' || value === 'xml' || value === 'json' || value === 'sarif') {
         return value;
     }
-    throw new Error('--format must be one of: text, xml, json');
+    throw new Error('--format must be one of: text, xml, json, sarif');
 }
 
 function replaceExtensions(target: Set<string>, value: string): void {
@@ -410,7 +411,78 @@ function formatReport(format: ReportFormat, cpd: Cpd, matches: Match[]): string 
     if (format === 'xml') {
         return formatXml(matches, cpd);
     }
+    if (format === 'sarif') {
+        return formatSarif(matches, cpd);
+    }
     return cpd.report(matches);
+}
+
+// SARIF 2.1.0 for GitHub Code Scanning (`github/codeql-action/upload-sarif`).
+// One result per duplication, anchored at its first occurrence; the other
+// occurrences are relatedLocations. URIs are relative to cwd so GitHub maps them
+// to the checked-out tree. The content fingerprint goes into partialFingerprints,
+// so GitHub tracks an alert across commits even when the clone moves.
+function formatSarif(matches: Match[], cpd: Cpd): string {
+    const cwd = process.cwd();
+    const physicalLocation = (location: MatchLocation) => ({
+        physicalLocation: {
+            artifactLocation: { uri: toPosix(path.relative(cwd, location.path)) },
+            region: {
+                startLine: location.startLine,
+                startColumn: location.startColumn,
+                endLine: location.endLine,
+                endColumn: location.endColumn,
+            },
+        },
+    });
+
+    const results = matches.map((match) => {
+        const [primary, ...others] = match.marks.map((mark) => cpd.locationForMark(mark, match.tokenCount));
+        const elsewhere = others
+            .map((location) => `${toPosix(path.relative(cwd, location.path))}:${location.startLine}`)
+            .join(', ');
+        return {
+            ruleId: 'duplication',
+            ruleIndex: 0,
+            level: 'warning',
+            message: {
+                text: `Found a ${match.tokenCount} token (${match.markCount} occurrences) duplication${
+                    elsewhere ? `; also at ${elsewhere}` : ''
+                }.`,
+            },
+            locations: [physicalLocation(primary)],
+            relatedLocations: others.map((location, index) => ({ id: index, ...physicalLocation(location) })),
+            partialFingerprints: { 'cloneAlert/contentV1': fingerprint(cpd, match) },
+        };
+    });
+
+    const log = {
+        $schema: 'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json',
+        version: '2.1.0',
+        runs: [
+            {
+                tool: {
+                    driver: {
+                        name: 'clone-alert',
+                        informationUri: 'https://github.com/BaryshevRS/clone-alert',
+                        version: readVersion(),
+                        rules: [
+                            {
+                                id: 'duplication',
+                                name: 'Duplication',
+                                shortDescription: { text: 'Duplicated code' },
+                                fullDescription: { text: 'A span of duplicated tokens detected by clone-alert.' },
+                                helpUri: 'https://github.com/BaryshevRS/clone-alert#readme',
+                                defaultConfiguration: { level: 'warning' },
+                            },
+                        ],
+                    },
+                },
+                results,
+            },
+        ],
+    };
+    return `${JSON.stringify(log, null, 2)}\n`;
 }
 
 function matchToJson(match: Match, cpd: Cpd) {

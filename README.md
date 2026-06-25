@@ -22,7 +22,7 @@ npx clone-alert --minimum-tokens 50 --files src
 - 🧩 **Frontend templates, natively** — tokenizes **Vue** `<template>`, **Svelte** markup, and **Angular** templates, not just `<script>` blocks. Detects template‑to‑script duplication too.
 - 🧪 **Zero‑config CLI** — sensible defaults, recursive directory scan, `node_modules`/`.git`/`dist` skipped automatically.
 - 📦 **Tiny footprint** — a single runtime dependency (`typescript`). Framework parsers are **optional peer dependencies**, loaded only when needed.
-- 🛠 **CI‑ready** — `text`, `json`, and PMD‑style `xml` reports, plus `--fail-on-violation` (exit code `4`).
+- 🛠 **CI‑ready** — `text`, `json`, PMD‑style `xml`, and **SARIF** (GitHub Code Scanning) reports, plus `--fail-on-violation` (exit code `4`).
 - 📉 **Baseline for adoption** — accept the clones an existing project already has and fail CI only on **new** ones. Fingerprints are content‑based, so the baseline survives code moving around.
 - 🔇 **Inline suppression** — ignore known duplication with `CPD-OFF` / `CPD-ON` comment markers.
 
@@ -87,7 +87,7 @@ clone-alert [options] [<path>...]
 | `--files <path[,path...]>` | Files or directories to scan. Can be repeated. |
 | `--minimum-tokens <n>` | Minimum duplicated token span. Default: `50`. |
 | `--minimum-tile-size <n>` | Alias for `--minimum-tokens`. |
-| `--format <text\|xml\|json>` | Report format. Default: `text`. |
+| `--format <text\|xml\|json\|sarif>` | Report format. Default: `text`. `sarif` targets GitHub Code Scanning. |
 | `--extensions <ext[,ext...]>` | Extensions to include during recursive scans. |
 | `--exclude <glob[,glob...]>` | Exclude files or directories (glob). Can be repeated. |
 | `--ignore-identifiers` / `--no-ignore-identifiers` | Normalize or compare identifier names. Strict by default, like PMD. |
@@ -199,6 +199,31 @@ Each clone is matched by a **content fingerprint** hashed over its tokens only �
 
 > The baseline filters the already‑computed match set, so it adds no measurable cost to a scan — there's no separate cache to persist between CI runs.
 
+## GitHub Code Scanning (SARIF)
+
+`--format sarif` emits a SARIF 2.1.0 log that GitHub ingests as code‑scanning alerts, shown inline in pull requests and in the repository's Security tab. Each duplication's stable content fingerprint is written to `partialFingerprints`, so GitHub tracks an alert across commits and **does not re‑raise it when the clone simply moves**. Artifact URIs are relative to the working directory, so they map onto the checked‑out tree.
+
+```yaml
+# .github/workflows/clone-alert.yml
+name: clone-alert
+on: [push, pull_request]
+jobs:
+  duplication:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write   # required to upload SARIF
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npx clone-alert src --format sarif > clone-alert.sarif
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: clone-alert.sarif
+```
+
+Combine it with a committed `--baseline` to surface only the duplications added after adoption.
+
 ## Programmatic API
 
 clone-alert ships with TypeScript types and a small Node API:
@@ -261,6 +286,7 @@ Because the tokens are identical and the match engine is a faithful port of PMD'
 | Angular templates | ✅ | ➖ | flat HTML only |
 | PMD CPD algorithm parity | ✅ | — | ➖ |
 | CI baseline (fail only on new) | ✅ committed fingerprint file | ➖ | ⚠️ via on‑disk cache¹ |
+| SARIF / GitHub Code Scanning | ✅ | ➖ | ✅ |
 | Install size | tiny (1 dep) | JVM required | npm package |
 
 ¹ jscpd derives "new vs known" from a persistent store (LevelDB) that you must keep between runs; clone-alert commits a small, reviewable JSON baseline and stays stateless.

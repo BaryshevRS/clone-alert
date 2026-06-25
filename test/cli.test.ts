@@ -208,6 +208,57 @@ test('baseline fingerprint survives the duplicated code moving in the file', asy
     expect(checked.stderr).toMatch(/suppressed by baseline/);
 });
 
+test('emits SARIF 2.1.0 for GitHub Code Scanning', async () => {
+    const fixture = await makeFixture('sarif');
+    await writeFile(path.join(fixture, 'a.ts'), DUP_BLOCK);
+    await writeFile(path.join(fixture, 'b.ts'), DUP_BLOCK.replace('duplicateOne', 'duplicateTwo'));
+
+    // Run with cwd at the fixture so artifact URIs are clean relative paths.
+    const { stdout } = await execFileAsync(
+        process.execPath,
+        [cli, '--minimum-tokens', '5', '--files', '.', '--format', 'sarif'],
+        { cwd: fixture }
+    );
+
+    const log = JSON.parse(stdout);
+    expect(log.version).toBe('2.1.0');
+    expect(log.runs[0].tool.driver.name).toBe('clone-alert');
+    expect(log.runs[0].tool.driver.rules[0].id).toBe('duplication');
+
+    const result = log.runs[0].results[0];
+    expect(result.ruleId).toBe('duplication');
+    expect(result.level).toBe('warning');
+    expect(result.locations[0].physicalLocation.artifactLocation.uri).toMatch(/^[ab]\.ts$/);
+    expect(result.locations[0].physicalLocation.region).toMatchObject({
+        startLine: expect.any(Number),
+        startColumn: expect.any(Number),
+        endLine: expect.any(Number),
+        endColumn: expect.any(Number),
+    });
+    expect(result.relatedLocations).toHaveLength(1);
+    expect(result.partialFingerprints['cloneAlert/contentV1']).toMatch(/^[0-9a-f]{16}$/);
+});
+
+test('SARIF honors the baseline (only new clones become results)', async () => {
+    const fixture = await makeFixture('sarif-baseline');
+    const baseline = path.join(fixture, 'baseline.json');
+    await writeFile(path.join(fixture, 'a.ts'), DUP_BLOCK);
+    await writeFile(path.join(fixture, 'b.ts'), DUP_BLOCK.replace('duplicateOne', 'duplicateTwo'));
+
+    await execFileAsync(
+        process.execPath,
+        [cli, '--minimum-tokens', '5', '--files', '.', '--baseline', baseline, '--update-baseline'],
+        { cwd: fixture }
+    );
+
+    const { stdout } = await execFileAsync(
+        process.execPath,
+        [cli, '--minimum-tokens', '5', '--files', '.', '--baseline', baseline, '--format', 'sarif'],
+        { cwd: fixture }
+    );
+    expect(JSON.parse(stdout).runs[0].results).toHaveLength(0);
+});
+
 test('--update-baseline without --baseline is an error', async () => {
     const fixture = await makeFixture('baseline-missing-flag');
     await writeFile(path.join(fixture, 'a.ts'), DUP_BLOCK);
