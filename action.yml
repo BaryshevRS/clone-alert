@@ -1,8 +1,5 @@
 name: clone-alert
-description: >-
-  Find duplicated / copy-pasted code in TypeScript, JavaScript, JSX/TSX, Vue,
-  Svelte and Angular — PMD CPD-compatible. Optionally uploads results to GitHub
-  Code Scanning (SARIF) so clones show up as annotations in the PR diff.
+description: "PMD CPD-compatible copy-paste detector for TS, JS, JSX/TSX, Vue, Svelte & Angular, with SARIF Code Scanning upload."
 author: BaryshevRS
 branding:
   icon: copy
