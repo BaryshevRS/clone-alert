@@ -1,0 +1,21 @@
+name: Code Scanning
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  clone-alert:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      # Dogfood the action from this repo (uses: ./) to validate it end-to-end.
+      - uses: ./
+        with:
+          paths: src
+          minimum-tokens: 100
+          fail-on-violation: false   # report-only: surface clones as alerts, never fail CI
