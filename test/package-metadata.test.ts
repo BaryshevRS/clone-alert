@@ -17,11 +17,11 @@ function actionInputDefault(inputName: string): string | undefined {
     }
 
     for (const line of lines.slice(inputStart + 1)) {
-        if (/^  [a-z0-9-]+:$/i.test(line)) {
+        if (/^ {2}[a-z0-9-]+:$/i.test(line)) {
             return undefined;
         }
 
-        const defaultMatch = /^    default: '([^']*)'$/.exec(line);
+        const defaultMatch = /^ {4}default: ['"]([^'"]*)['"]$/.exec(line);
         if (defaultMatch) {
             return defaultMatch[1];
         }
