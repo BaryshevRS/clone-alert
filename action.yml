@@ -10,52 +10,52 @@ branding:
 
 inputs:
   paths:
-    description: 'Space-separated files/directories to scan.'
+    description: "Space-separated files/directories to scan."
     required: false
-    default: '.'
+    default: "."
   minimum-tokens:
-    description: 'Minimum duplicate token length to report (PMD --minimum-tokens).'
+    description: "Minimum duplicate token length to report (PMD --minimum-tokens)."
     required: false
-    default: '100'
+    default: "100"
   extensions:
     description: 'Comma-separated list of extensions to scan, overriding defaults (e.g. "ts,tsx,vue").'
     required: false
-    default: ''
+    default: ""
   exclude:
-    description: 'Comma-separated glob patterns to exclude.'
+    description: "Comma-separated glob patterns to exclude."
     required: false
-    default: ''
+    default: ""
   fail-on-violation:
-    description: 'Fail the job (exit 1) when duplicates are found.'
+    description: "Fail the job (exit 1) when duplicates are found."
     required: false
-    default: 'true'
+    default: "true"
   upload-sarif:
-    description: 'Upload a SARIF report to GitHub Code Scanning (needs security-events: write).'
+    description: "Upload a SARIF report to GitHub Code Scanning (needs security-events: write)."
     required: false
-    default: 'true'
+    default: "true"
   sarif-file:
-    description: 'Path of the SARIF file to write.'
+    description: "Path of the SARIF file to write."
     required: false
-    default: 'clone-alert.sarif'
+    default: "clone-alert.sarif"
   category:
-    description: 'Code Scanning category, to keep clone-alert results separate from other tools.'
+    description: "Code Scanning category, to keep clone-alert results separate from other tools."
     required: false
-    default: 'clone-alert'
+    default: "clone-alert"
   version:
     description: 'npm version/dist-tag of clone-alert to run (e.g. "latest", "0.4.0").'
     required: false
-    default: 'latest'
+    default: "latest"
   working-directory:
-    description: 'Directory to run clone-alert in.'
+    description: "Directory to run clone-alert in."
     required: false
-    default: '.'
+    default: "."
 
 outputs:
   exit-code:
-    description: 'Raw clone-alert exit code (0 = clean, 4 = duplicates found).'
+    description: "Raw clone-alert exit code (0 = clean, 4 = duplicates found)."
     value: ${{ steps.run.outputs.exit-code }}
   sarif-file:
-    description: 'Path of the written SARIF file.'
+    description: "Path of the written SARIF file."
     value: ${{ steps.run.outputs.sarif-file }}
 
 runs:

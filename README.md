@@ -233,6 +233,15 @@ jobs:
           # fail-on-violation: false   # report-only: surface clones as alerts, don't fail the job
 ```
 
+> [!IMPORTANT]
+> **The `permissions:` block is required.** GitHub Actions grants a job no
+> permissions by default, so without it the SARIF upload fails. You need:
+> - `security-events: write` — to upload the SARIF report to Code Scanning (the only line that's strictly required);
+> - `contents: read` — to let `actions/checkout` read your code.
+>
+> If you only want a pass/fail gate and **no** Code Scanning alerts, set
+> `upload-sarif: false` and you can drop `security-events: write`.
+
 **Inputs** (all optional): `paths` (default `.`), `minimum-tokens` (`100`), `extensions`, `exclude`,
 `fail-on-violation` (`true`), `upload-sarif` (`true`), `sarif-file` (`clone-alert.sarif`),
 `category` (`clone-alert`), `version` (`latest`), `working-directory` (`.`).
