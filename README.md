@@ -2,6 +2,7 @@
 
 > Fast **copy‑paste detector** for **TypeScript**, **JavaScript**, **JSX/TSX**, **Vue**, **Svelte** and **Angular** — a **PMD CPD‑compatible** duplicate‑code finder you can drop into any project or CI pipeline.
 
+[![CI](https://github.com/BaryshevRS/clone-alert/actions/workflows/ci.yml/badge.svg)](https://github.com/BaryshevRS/clone-alert/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/clone-alert.svg)](https://www.npmjs.com/package/clone-alert)
 [![license](https://img.shields.io/npm/l/clone-alert.svg)](./LICENSE)
 [![node](https://img.shields.io/node/v/clone-alert.svg)](https://nodejs.org)
