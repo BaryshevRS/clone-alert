@@ -210,6 +210,36 @@ Each clone is matched by a **content fingerprint** hashed over its tokens only �
 
 `--format sarif` emits a SARIF 2.1.0 log that GitHub ingests as code‑scanning alerts, shown inline in pull requests and in the repository's Security tab. Each duplication's stable content fingerprint is written to `partialFingerprints`, so GitHub tracks an alert across commits and **does not re‑raise it when the clone simply moves**. Artifact URIs are relative to the working directory, so they map onto the checked‑out tree.
 
+### Use the GitHub Action
+
+The quickest way — one step, SARIF uploaded for you:
+
+```yaml
+# .github/workflows/clone-alert.yml
+name: clone-alert
+on: [push, pull_request]
+jobs:
+  duplication:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # required to upload SARIF
+    steps:
+      - uses: actions/checkout@v4
+      - uses: BaryshevRS/clone-alert@v1
+        with:
+          paths: src
+          minimum-tokens: 100
+          # fail-on-violation: false   # report-only: surface clones as alerts, don't fail the job
+```
+
+**Inputs** (all optional): `paths` (default `.`), `minimum-tokens` (`100`), `extensions`, `exclude`,
+`fail-on-violation` (`true`), `upload-sarif` (`true`), `sarif-file` (`clone-alert.sarif`),
+`category` (`clone-alert`), `version` (`latest`), `working-directory` (`.`).
+**Outputs:** `exit-code` (`0` clean / `4` duplicates found), `sarif-file`.
+
+### Or wire it up manually
+
 ```yaml
 # .github/workflows/clone-alert.yml
 name: clone-alert

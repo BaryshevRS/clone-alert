@@ -1,0 +1,110 @@
+name: clone-alert
+description: >-
+  Find duplicated / copy-pasted code in TypeScript, JavaScript, JSX/TSX, Vue,
+  Svelte and Angular — PMD CPD-compatible. Optionally uploads results to GitHub
+  Code Scanning (SARIF) so clones show up as annotations in the PR diff.
+author: BaryshevRS
+branding:
+  icon: copy
+  color: orange
+
+inputs:
+  paths:
+    description: 'Space-separated files/directories to scan.'
+    required: false
+    default: '.'
+  minimum-tokens:
+    description: 'Minimum duplicate token length to report (PMD --minimum-tokens).'
+    required: false
+    default: '100'
+  extensions:
+    description: 'Comma-separated list of extensions to scan, overriding defaults (e.g. "ts,tsx,vue").'
+    required: false
+    default: ''
+  exclude:
+    description: 'Comma-separated glob patterns to exclude.'
+    required: false
+    default: ''
+  fail-on-violation:
+    description: 'Fail the job (exit 1) when duplicates are found.'
+    required: false
+    default: 'true'
+  upload-sarif:
+    description: 'Upload a SARIF report to GitHub Code Scanning (needs security-events: write).'
+    required: false
+    default: 'true'
+  sarif-file:
+    description: 'Path of the SARIF file to write.'
+    required: false
+    default: 'clone-alert.sarif'
+  category:
+    description: 'Code Scanning category, to keep clone-alert results separate from other tools.'
+    required: false
+    default: 'clone-alert'
+  version:
+    description: 'npm version/dist-tag of clone-alert to run (e.g. "latest", "0.4.0").'
+    required: false
+    default: 'latest'
+  working-directory:
+    description: 'Directory to run clone-alert in.'
+    required: false
+    default: '.'
+
+outputs:
+  exit-code:
+    description: 'Raw clone-alert exit code (0 = clean, 4 = duplicates found).'
+    value: ${{ steps.run.outputs.exit-code }}
+  sarif-file:
+    description: 'Path of the written SARIF file.'
+    value: ${{ steps.run.outputs.sarif-file }}
+
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        CA_PATHS: ${{ inputs.paths }}
+        CA_MIN_TOKENS: ${{ inputs.minimum-tokens }}
+        CA_EXTENSIONS: ${{ inputs.extensions }}
+        CA_EXCLUDE: ${{ inputs.exclude }}
+        CA_SARIF: ${{ inputs.sarif-file }}
+        CA_VERSION: ${{ inputs.version }}
+      run: |
+        args=( "clone-alert@${CA_VERSION}" --minimum-tokens "${CA_MIN_TOKENS}" --format sarif )
+        [ -n "${CA_EXTENSIONS}" ] && args+=( --extensions "${CA_EXTENSIONS}" )
+        [ -n "${CA_EXCLUDE}" ] && args+=( --exclude "${CA_EXCLUDE}" )
+        # paths are positional; allow multiple space-separated entries
+        read -r -a paths_arr <<< "${CA_PATHS}"
+        args+=( "${paths_arr[@]}" )
+
+        echo "Running: npx -y ${args[*]}"
+        set +e
+        npx -y "${args[@]}" > "${CA_SARIF}"
+        code=$?
+        set -e
+        echo "exit-code=${code}" >> "${GITHUB_OUTPUT}"
+        echo "sarif-file=${CA_SARIF}" >> "${GITHUB_OUTPUT}"
+        # exit codes: 0 = clean, 4 = duplicates found. Anything else is a real error.
+        if [ "${code}" -ne 0 ] && [ "${code}" -ne 4 ]; then
+          echo "::error::clone-alert failed with exit code ${code}"
+          exit "${code}"
+        fi
+        if [ "${code}" -eq 4 ]; then
+          echo "::warning::clone-alert found duplicate code (see Code Scanning / SARIF report)"
+        fi
+
+    - name: Upload SARIF to Code Scanning
+      if: ${{ always() && inputs.upload-sarif == 'true' }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ inputs.working-directory }}/${{ inputs.sarif-file }}
+        category: ${{ inputs.category }}
+
+    - name: Enforce no-duplication gate
+      if: ${{ inputs.fail-on-violation == 'true' && steps.run.outputs.exit-code == '4' }}
+      shell: bash
+      run: |
+        echo "::error::Duplicate code detected by clone-alert (fail-on-violation enabled)."
+        exit 1
