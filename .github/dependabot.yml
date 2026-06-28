@@ -1,0 +1,29 @@
+version: 2
+updates:
+  # npm dependencies (package.json) — one grouped PR per run to avoid spam.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      npm:
+        patterns:
+          - "*"
+
+  # GitHub Actions versions used in .github/workflows/* (checkout, setup-node, …).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions:
+        patterns:
+          - "*"
