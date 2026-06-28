@@ -103,6 +103,8 @@ clone-alert [options] [<path>...]
 | `--fail-on-violation` / `--no-fail-on-violation` | Exit with code `4` when duplications are found. **On by default**, like PMD CPD; pass `--no-fail-on-violation` to always exit `0`. |
 | `--baseline <path>` | Ignore duplications recorded in this baseline file; report and fail only on **new** ones. Matched by content fingerprint, so accepted clones stay suppressed even after the code moves. |
 | `--update-baseline` | Write/regenerate the baseline file at `--baseline` with all current duplications, then exit `0`. Run once to adopt existing debt. |
+| `--config <path>` | Read options from a JSON config file. Default: `clone-alert.config.json` in the current directory, if present. |
+| `--no-config` | Ignore any `clone-alert.config.json`. |
 | `-h, --help` | Show help. |
 | `-V, --version` | Show version. |
 
@@ -127,6 +129,40 @@ clone-alert --format json --files src,packages --exclude '**/generated/**'
 # Find renamed clones by normalizing identifiers and literals
 clone-alert --minimum-tokens 40 --ignore-identifiers --ignore-literals --files src
 ```
+
+### Configuration file
+
+Instead of repeating flags on every run (and across CI, the GitHub Action, and
+local scripts), commit a `clone-alert.config.json` to the project root. It is
+picked up automatically from the current directory:
+
+```json
+{
+  "paths": ["src"],
+  "minimumTokens": 70,
+  "extensions": ["ts", "tsx", "vue"],
+  "exclude": ["**/*.spec.ts", "**/generated/**"],
+  "vueTemplates": false
+}
+```
+
+```sh
+clone-alert                      # uses clone-alert.config.json
+clone-alert --format json        # CLI flags win over the config
+clone-alert --config ci.json     # read a specific file
+clone-alert --no-config          # ignore the config entirely
+```
+
+- **Keys** mirror the CLI options in camelCase: `paths`, `extensions`,
+  `exclude`, `minimumTokens`, `format`, `failOnViolation`, `gitignore`,
+  `nonRecursive`, `skipDuplicateFiles`, `skipLexicalErrors`, `ignoreIdentifiers`,
+  `ignoreLiterals`, `pmdTypescriptCompatibility`, `svelteTemplates`,
+  `vueTemplates`, `angularInlineTemplates`, `baseline`. All are optional.
+- **Precedence** is `CLI flag > config file > built-in default`.
+- `extensions` **replaces** the default set; `exclude` is **added** to any
+  `--exclude` flags; positional CLI paths **replace** the config's `paths`.
+- Unknown keys and wrong value types are reported as errors, so typos surface
+  immediately.
 
 ## PMD CPD compatibility
 

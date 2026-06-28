@@ -104,6 +104,10 @@ Options:
   --update-baseline               Write/regenerate the baseline file at --baseline
                                   with all current duplications, then exit 0. Run
                                   this once to adopt the existing debt.
+  --config <path>                 Read options from a JSON config file. Default:
+                                  clone-alert.config.json in the current directory,
+                                  if present. CLI flags override config values.
+  --no-config                     Ignore any clone-alert.config.json.
   -h, --help                      Show this help.
   -V, --version                   Show version.
 
@@ -117,7 +121,7 @@ Examples:
 function main(argv: string[]): number {
     let options: CliOptions;
     try {
-        options = parseArgs(argv);
+        options = parseArgs(argv, resolveConfig(argv));
     } catch (error) {
         console.error(`clone-alert: ${(error as Error).message}`);
         console.error("Try 'clone-alert --help' for more information.");
@@ -227,28 +231,63 @@ function toCloneRecord(match: Match, cpd: Cpd): CloneRecord {
     return { fingerprint: fingerprint(cpd, match), tokens: match.tokenCount, files };
 }
 
-function parseArgs(argv: string[]): CliOptions {
+function builtinDefaults(): CliOptions {
+    return {
+        paths: [],
+        extensions: new Set(DEFAULT_EXTENSIONS),
+        excludePatterns: [],
+        respectGitignore: true,
+        nonRecursive: false,
+        skipDuplicateFiles: false,
+        skipLexicalErrors: false,
+        minTileSize: 50,
+        ignoreIdentifiers: false,
+        ignoreLiterals: false,
+        pmdTypescriptCompatibility: true,
+        svelteTemplates: true,
+        vueTemplates: true,
+        angularInlineTemplates: false,
+        format: 'text',
+        failOnViolation: true,
+        baselinePath: undefined,
+        updateBaseline: false,
+    };
+}
+
+// Precedence: CLI flag > config file (the `base`) > built-in default. Positional
+// paths and --files replace the config's `paths`; --exclude adds to config excludes.
+function parseArgs(argv: string[], base: CliOptions = builtinDefaults()): CliOptions {
     const paths: string[] = [];
-    const extensions = new Set(DEFAULT_EXTENSIONS);
-    const excludePatterns: string[] = [];
-    let respectGitignore = true;
-    let nonRecursive = false;
-    let skipDuplicateFiles = false;
-    let skipLexicalErrors = false;
-    let minTileSize = 50;
-    let ignoreIdentifiers = false;
-    let ignoreLiterals = false;
-    let pmdTypescriptCompatibility = true;
-    let svelteTemplates = true;
-    let vueTemplates = true;
-    let angularInlineTemplates = false;
-    let format: ReportFormat = 'text';
-    let failOnViolation = true;
-    let baselinePath: string | undefined;
-    let updateBaseline = false;
+    const extensions = new Set(base.extensions);
+    const excludePatterns: string[] = [...base.excludePatterns];
+    let respectGitignore = base.respectGitignore;
+    let nonRecursive = base.nonRecursive;
+    let skipDuplicateFiles = base.skipDuplicateFiles;
+    let skipLexicalErrors = base.skipLexicalErrors;
+    let minTileSize = base.minTileSize ?? 50;
+    let ignoreIdentifiers = base.ignoreIdentifiers ?? false;
+    let ignoreLiterals = base.ignoreLiterals ?? false;
+    let pmdTypescriptCompatibility = base.pmdTypescriptCompatibility ?? true;
+    let svelteTemplates = base.svelteTemplates ?? true;
+    let vueTemplates = base.vueTemplates ?? true;
+    let angularInlineTemplates = base.angularInlineTemplates ?? false;
+    let format: ReportFormat = base.format;
+    let failOnViolation = base.failOnViolation;
+    let baselinePath: string | undefined = base.baselinePath;
+    let updateBaseline = base.updateBaseline;
 
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
+
+        // --config / --no-config are resolved in resolveConfig before parsing;
+        // skip them here so they don't trip the unknown-option guard.
+        if (arg === '--config') {
+            i++;
+            continue;
+        }
+        if (arg === '--no-config' || arg.startsWith('--config=')) {
+            continue;
+        }
 
         if (arg === '-h' || arg === '--help') {
             console.log(HELP);
@@ -405,7 +444,8 @@ function parseArgs(argv: string[]): CliOptions {
     }
 
     return {
-        paths,
+        // CLI-provided paths replace the config's paths; fall back to config when none.
+        paths: paths.length > 0 ? paths : [...base.paths],
         extensions,
         excludePatterns,
         respectGitignore,
@@ -424,6 +464,196 @@ function parseArgs(argv: string[]): CliOptions {
         baselinePath,
         updateBaseline,
     };
+}
+
+interface ConfigFile {
+    paths?: unknown;
+    extensions?: unknown;
+    exclude?: unknown;
+    minimumTokens?: unknown;
+    format?: unknown;
+    failOnViolation?: unknown;
+    gitignore?: unknown;
+    nonRecursive?: unknown;
+    skipDuplicateFiles?: unknown;
+    skipLexicalErrors?: unknown;
+    ignoreIdentifiers?: unknown;
+    ignoreLiterals?: unknown;
+    pmdTypescriptCompatibility?: unknown;
+    svelteTemplates?: unknown;
+    vueTemplates?: unknown;
+    angularInlineTemplates?: unknown;
+    baseline?: unknown;
+}
+
+const CONFIG_KEYS: readonly string[] = [
+    'paths',
+    'extensions',
+    'exclude',
+    'minimumTokens',
+    'format',
+    'failOnViolation',
+    'gitignore',
+    'nonRecursive',
+    'skipDuplicateFiles',
+    'skipLexicalErrors',
+    'ignoreIdentifiers',
+    'ignoreLiterals',
+    'pmdTypescriptCompatibility',
+    'svelteTemplates',
+    'vueTemplates',
+    'angularInlineTemplates',
+    'baseline',
+];
+
+/** Built-in defaults merged with the config file (if any), forming the base parseArgs builds on. */
+function resolveConfig(argv: string[]): CliOptions {
+    const base = builtinDefaults();
+    const configPath = findConfigPath(argv);
+    if (!configPath) {
+        return base;
+    }
+    let text: string;
+    try {
+        text = fs.readFileSync(configPath, 'utf-8');
+    } catch {
+        throw new Error(`config file not readable: ${configPath}`);
+    }
+    let data: unknown;
+    try {
+        data = JSON.parse(text);
+    } catch (error) {
+        throw new Error(`${path.basename(configPath)}: invalid JSON (${(error as Error).message})`);
+    }
+    if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+        throw new Error(`${path.basename(configPath)}: must be a JSON object`);
+    }
+    applyConfig(base, data as ConfigFile, path.basename(configPath));
+    return base;
+}
+
+/** Locate the config file: --no-config disables it, --config sets it, else clone-alert.config.json in cwd. */
+function findConfigPath(argv: string[]): string | null {
+    let explicit: string | undefined;
+    for (let i = 0; i < argv.length; i++) {
+        const arg = argv[i];
+        if (arg === '--no-config') {
+            return null;
+        }
+        if (arg === '--config') {
+            explicit = argv[++i];
+            continue;
+        }
+        if (arg.startsWith('--config=')) {
+            explicit = arg.slice('--config='.length);
+        }
+    }
+    if (explicit !== undefined) {
+        if (!explicit || explicit.startsWith('-')) {
+            throw new Error('--config requires a value');
+        }
+        return path.resolve(process.cwd(), explicit);
+    }
+    const fallback = path.resolve(process.cwd(), 'clone-alert.config.json');
+    return fs.existsSync(fallback) ? fallback : null;
+}
+
+function applyConfig(base: CliOptions, raw: ConfigFile, label: string): void {
+    for (const key of Object.keys(raw)) {
+        if (!CONFIG_KEYS.includes(key)) {
+            throw new Error(`${label}: unknown config key: "${key}"`);
+        }
+    }
+    if (raw.paths !== undefined) {
+        base.paths = asStringArray(raw.paths, label, 'paths');
+    }
+    if (raw.extensions !== undefined) {
+        base.extensions = new Set();
+        for (const ext of asStringArray(raw.extensions, label, 'extensions')) {
+            base.extensions.add(ext.startsWith('.') ? ext.toLowerCase() : `.${ext.toLowerCase()}`);
+        }
+    }
+    if (raw.exclude !== undefined) {
+        base.excludePatterns = asStringArray(raw.exclude, label, 'exclude');
+    }
+    if (raw.minimumTokens !== undefined) {
+        base.minTileSize = asPositiveInteger(raw.minimumTokens, label, 'minimumTokens');
+    }
+    if (raw.format !== undefined) {
+        base.format = asFormat(raw.format, label);
+    }
+    if (raw.baseline !== undefined) {
+        base.baselinePath = asString(raw.baseline, label, 'baseline');
+    }
+    base.failOnViolation = asOptionalBool(raw.failOnViolation, label, 'failOnViolation', base.failOnViolation);
+    base.respectGitignore = asOptionalBool(raw.gitignore, label, 'gitignore', base.respectGitignore);
+    base.nonRecursive = asOptionalBool(raw.nonRecursive, label, 'nonRecursive', base.nonRecursive);
+    base.skipDuplicateFiles = asOptionalBool(
+        raw.skipDuplicateFiles,
+        label,
+        'skipDuplicateFiles',
+        base.skipDuplicateFiles
+    );
+    base.skipLexicalErrors = asOptionalBool(raw.skipLexicalErrors, label, 'skipLexicalErrors', base.skipLexicalErrors);
+    base.ignoreIdentifiers = asOptionalBool(
+        raw.ignoreIdentifiers,
+        label,
+        'ignoreIdentifiers',
+        base.ignoreIdentifiers ?? false
+    );
+    base.ignoreLiterals = asOptionalBool(raw.ignoreLiterals, label, 'ignoreLiterals', base.ignoreLiterals ?? false);
+    base.pmdTypescriptCompatibility = asOptionalBool(
+        raw.pmdTypescriptCompatibility,
+        label,
+        'pmdTypescriptCompatibility',
+        base.pmdTypescriptCompatibility ?? true
+    );
+    base.svelteTemplates = asOptionalBool(raw.svelteTemplates, label, 'svelteTemplates', base.svelteTemplates ?? true);
+    base.vueTemplates = asOptionalBool(raw.vueTemplates, label, 'vueTemplates', base.vueTemplates ?? true);
+    base.angularInlineTemplates = asOptionalBool(
+        raw.angularInlineTemplates,
+        label,
+        'angularInlineTemplates',
+        base.angularInlineTemplates ?? false
+    );
+}
+
+function asOptionalBool(value: unknown, label: string, key: string, fallback: boolean): boolean {
+    if (value === undefined) {
+        return fallback;
+    }
+    if (typeof value !== 'boolean') {
+        throw new Error(`${label}: "${key}" must be a boolean`);
+    }
+    return value;
+}
+
+function asString(value: unknown, label: string, key: string): string {
+    if (typeof value !== 'string') {
+        throw new Error(`${label}: "${key}" must be a string`);
+    }
+    return value;
+}
+
+function asStringArray(value: unknown, label: string, key: string): string[] {
+    if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+        throw new Error(`${label}: "${key}" must be an array of strings`);
+    }
+    return value as string[];
+}
+
+function asPositiveInteger(value: unknown, label: string, key: string): number {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+        throw new Error(`${label}: "${key}" must be a positive integer`);
+    }
+    return value;
+}
+
+function asFormat(value: unknown, label: string): ReportFormat {
+    if (typeof value !== 'string' || !(REPORT_FORMATS as string[]).includes(value)) {
+        throw new Error(`${label}: "format" must be one of: ${REPORT_FORMATS.join(', ')}`);
+    }
+    return value as ReportFormat;
 }
 
 function requireValue(argv: string[], index: number, option: string): string {
