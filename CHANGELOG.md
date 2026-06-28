@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0](https://github.com/BaryshevRS/clone-alert/compare/v1.0.1...v1.1.0) (2026-06-28)
+
+
+### Features
+
+* **cli:** add JSON config file support (clone-alert.config.json) ([8f2d703](https://github.com/BaryshevRS/clone-alert/commit/8f2d7039ccf8c46ffbdb94e86d426c2235b75d88))
+
 ## [1.0.0] - 2026-06-27
 
 First stable release. The public API (the `Cpd` class) and the CLI flags are now
