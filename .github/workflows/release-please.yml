@@ -35,11 +35,12 @@ jobs:
       contents: write # move the v<major> tag that the Marketplace Action reads
       id-token: write # OIDC for npm Trusted Publishing + provenance
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      # setup-node v6 is OIDC-aware: with id-token write + a trusted publisher it
+      # skips the placeholder authToken that v4 wrote into .npmrc (which forced
+      # token auth and 404'd). Node 24 ships npm >= 11.5.1, required for OIDC.
+      - uses: actions/setup-node@v6
         with:
-          # Node 24 ships npm >= 11.5.1, which OIDC Trusted Publishing requires.
-          # Node 22's bundled npm 10.x falls back to token auth and 404s.
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
