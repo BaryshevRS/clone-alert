@@ -1,0 +1,34 @@
+# clone-alert
+
+> PMD CPD-compatible copy-paste detector that finds duplicate code in TypeScript, JavaScript, JSX/TSX, Vue, Svelte and Angular. A drop-in PMD CPD alternative for the JS/TS ecosystem with no JVM, running 10–27× faster on real codebases, with text/json/xml/sarif/ai reports and a CI baseline to fail only on new clones.
+
+Quick start: `npx clone-alert --minimum-tokens 50 --files src`. Exits with code 4 when duplication is found, so it fails CI by default (pass `--no-fail-on-violation` to always exit 0). Requires Node.js 18+ and has a single runtime dependency (`typescript`). Vue/Svelte/Angular template support uses the optional peer deps `@vue/compiler-sfc`, `svelte` (5+ for markup) and `@angular/compiler`.
+
+## Docs
+
+- [README (full documentation)](https://raw.githubusercontent.com/BaryshevRS/clone-alert/main/README.md): install, CLI options, config file, PMD compatibility, frontend templates, baseline, SARIF, benchmarks, programmatic API and FAQ.
+- [Quick start](https://github.com/BaryshevRS/clone-alert/blob/main/README.md#quick-start): the common commands for scanning a folder and gating CI.
+- [CLI options](https://github.com/BaryshevRS/clone-alert/blob/main/README.md#cli-options): every flag, including `--minimum-tokens`, `--format`, `--exclude`, `--baseline`, `--fail-on-violation`.
+- [Report formats](https://github.com/BaryshevRS/clone-alert/blob/main/README.md#which-report-format-should-i-use): text, json, xml, csv, sarif, markdown, ai, shields and when to use each.
+- [Programmatic API](https://github.com/BaryshevRS/clone-alert/blob/main/README.md#programmatic-api): the `Cpd` class for using clone-alert from Node/TypeScript.
+
+## Recipes
+
+- [AI-friendly reports](https://github.com/BaryshevRS/clone-alert/blob/main/README.md#ai-friendly-reports): `--format ai` for compact, token-frugal clone listings to feed an AI coding agent or LLM pipeline.
+- [Baseline (adopt an existing project)](https://github.com/BaryshevRS/clone-alert/blob/main/README.md#baseline-adopting-an-existing-project): accept today's clones and fail CI only on new ones, matched by content fingerprint.
+- [GitHub Code Scanning (SARIF)](https://github.com/BaryshevRS/clone-alert/blob/main/README.md#github-code-scanning-sarif): emit SARIF or use the official GitHub Action `uses: BaryshevRS/clone-alert@v1`.
+- [Frontend templates](https://github.com/BaryshevRS/clone-alert/blob/main/README.md#frontend-templates): how Vue, Svelte and Angular markup and bindings are tokenized.
+- [Suppressing duplication](https://github.com/BaryshevRS/clone-alert/blob/main/README.md#suppressing-duplication): `// CPD-OFF` and `// CPD-ON` inline markers.
+
+## Reference
+
+- [PMD CPD compatibility](https://github.com/BaryshevRS/clone-alert/blob/main/README.md#pmd-cpd-compatibility): how the tokenizer and match engine stay 1:1 with PMD.
+- [Benchmarks](https://github.com/BaryshevRS/clone-alert/blob/main/README.md#benchmarks): speed and memory vs PMD CPD on nestjs, angular, playwright, next.js and nx.
+- [Comparison vs PMD CPD and jscpd](https://github.com/BaryshevRS/clone-alert/blob/main/README.md#comparison): feature matrix.
+- [FAQ](https://github.com/BaryshevRS/clone-alert/blob/main/README.md#faq): is it a PMD CPD alternative, do I need Java, how is it different from jscpd, how to gate CI.
+
+## Optional
+
+- [CHANGELOG](https://raw.githubusercontent.com/BaryshevRS/clone-alert/main/CHANGELOG.md): release history.
+- [Contributing](https://github.com/BaryshevRS/clone-alert/blob/main/.github/CONTRIBUTING.md): how to build, test and contribute.
+- [npm package](https://www.npmjs.com/package/clone-alert): install and version info.

@@ -42,7 +42,16 @@
     "vue",
     "svelte",
     "angular",
-    "cli"
+    "cli",
+    "jscpd-alternative",
+    "pmd-cpd-alternative",
+    "find-duplicate-code",
+    "duplicate-code-detection",
+    "code-smell",
+    "sarif",
+    "monorepo",
+    "lint",
+    "ci"
   ],
   "repository": {
     "type": "git",

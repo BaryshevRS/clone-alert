@@ -72,6 +72,81 @@ clone-alert --files src --baseline .clone-alert-baseline.json --update-baseline
 clone-alert --files src --baseline .clone-alert-baseline.json --fail-on-violation
 ```
 
+## AI-friendly reports
+
+clone-alert includes compact output modes for AI coding agents, LLM pipelines,
+and documentation examples. Use these recipes when you want an agent to find
+duplicate-code hot spots without spending context on repeated source code.
+
+### How do I get an AI-friendly duplicate-code report?
+
+Use `--format ai` when passing clone locations to Codex, Claude Code, Cursor, or
+another coding agent:
+
+```sh
+npx clone-alert --format ai --files src --no-fail-on-violation
+```
+
+Example output:
+
+```text
+core.ts:120-180 ~ index.ts:44-103
+vue.ts:20-75 ~ svelte.ts:18-70
+---
+2 clones · 4.8% duplicated lines
+```
+
+The `ai` reporter strips shared directory prefixes, omits duplicated source
+fragments, and prints one compact line per clone. That gives the agent exact
+files and ranges to inspect while keeping the prompt small.
+
+### How do I ask an agent to fix duplicates?
+
+Give the agent the `ai` report plus one concrete instruction:
+
+```text
+Run clone-alert with --format ai, inspect each reported range, and refactor only
+the duplicated behavior. Keep public APIs unchanged and rerun the test suite.
+```
+
+For large reports, start with the highest-token or most repeated clones first.
+For intentional duplication, prefer a baseline or `CPD-OFF` / `CPD-ON` markers
+over broad excludes, so future accidental clones still show up.
+
+### How do I fail CI only on new duplicates?
+
+Use a baseline when adopting clone-alert in a project that already has known
+duplication:
+
+```sh
+npx clone-alert --files src --baseline .clone-alert-baseline.json --update-baseline
+npx clone-alert --files src --baseline .clone-alert-baseline.json --fail-on-violation
+```
+
+The baseline stores content fingerprints, not line numbers, so accepted clones
+stay suppressed when code moves or lines shift.
+
+### How do I surface duplicates in GitHub Code Scanning?
+
+Use the GitHub Action for a one-step setup, or emit SARIF directly:
+
+```sh
+npx clone-alert --format sarif --files src --no-fail-on-violation > clone-alert.sarif
+```
+
+SARIF is best for repository security/code-quality dashboards. The `ai` format is
+best for agent prompts and compact documentation examples.
+
+### Which report format should I use?
+
+| Use case | Format |
+| --- | --- |
+| Human terminal output | `text` |
+| AI coding agents and LLM prompts | `ai` |
+| GitHub Code Scanning | `sarif` |
+| Dashboards or custom tooling | `json` |
+| PMD-compatible integrations | `xml`, `csv`, `csv_with_linecount_per_file` |
+
 ## Usage
 
 ```sh
@@ -414,9 +489,39 @@ npm run compare:pmd -- /path/to/project --minimum-tokens 50
 
 `npm run compare:pmd` runs PMD CPD, clone-alert, and jscpd on the same file tree and prints a JSON summary of time, peak RSS, duplicate counts, occurrences, and overlap. (jscpd is not a dependency; install it separately or pass `--jscpd <command>`.)
 
+## FAQ
+
+### Is clone-alert a PMD CPD alternative for JavaScript and TypeScript?
+
+Yes. clone-alert is a **drop-in PMD CPD alternative** built for the JS/TS ecosystem. It is a faithful port of PMD CPD's match algorithm and TypeScript/JavaScript tokenizers — validated against PMD's own golden fixtures — and finds the same clones, while running **10–27× faster on 1.3–2.6× less memory** in our [benchmarks](#benchmarks).
+
+### Do I need Java or the JVM to run it?
+
+No. PMD CPD is a Java tool and needs a JVM; clone-alert is a single npm package with one runtime dependency (`typescript`) and runs on **Node.js 18+**. Install it with `npm install --save-dev clone-alert` or run it once with `npx clone-alert`.
+
+### How is clone-alert different from jscpd?
+
+clone-alert tokenizes **Vue `<template>`, Svelte markup, and Angular templates natively** (jscpd does Vue partially, Angular as flat HTML, and Svelte not at all), keeps its CI baseline as a **small committed JSON fingerprint file** instead of a persistent LevelDB cache, and stays **algorithm-compatible with PMD CPD**. See the full [comparison table](#comparison).
+
+### How do I detect duplicate code in a TypeScript monorepo?
+
+Point it at your packages and exclude generated code: `clone-alert --format json --files src,packages --exclude '**/generated/**'`. clone-alert scans recursively, honors `.gitignore`, and uses a struct-of-arrays token core that stays fast on large monorepos like Next.js and nx.
+
+### How do I fail a CI build when duplicate code is found?
+
+clone-alert fails CI **by default** — it exits with code `4` when duplication is found, just like PMD CPD. Run `clone-alert --minimum-tokens 50 --files src` in your pipeline, or use the [GitHub Action](#use-the-github-action) (`uses: BaryshevRS/clone-alert@v1`) to also upload SARIF to Code Scanning.
+
+### Can I adopt it on a legacy project without a red CI on day one?
+
+Yes — use a [baseline](#baseline-adopting-an-existing-project). Run `--update-baseline` once to accept today's clones, commit the file, then fail CI **only on new duplicates**. The baseline matches by content fingerprint, so accepted clones stay suppressed even when code moves or is reformatted.
+
+### Does it give an LLM- or AI-agent-friendly report?
+
+Yes — `--format ai` prints a compact, token-frugal listing (one `fileA:start-end ~ fileB:start-end` line per clone, no duplicated source) that you can hand to Claude Code, Cursor, Codex, or any LLM pipeline. See [AI-friendly reports](#ai-friendly-reports).
+
 ## Keywords
 
-copy‑paste detector · duplicate code finder · code clone detection · CPD · PMD CPD alternative · jscpd alternative · TypeScript duplicate code · JavaScript duplicate code · JSX/TSX clones · Vue / Svelte / Angular duplication · DRY · static analysis · code quality · CI lint.
+copy‑paste detector · duplicate code finder · code clone detection · CPD · PMD CPD alternative · jscpd alternative · TypeScript duplicate code · JavaScript duplicate code · JSX/TSX clones · Vue / Svelte / Angular duplication · DRY · static analysis · code quality · CI lint · duplicate code detector for Node.js · no‑JVM PMD CPD · monorepo copy‑paste detection · SARIF code scanning.
 
 ## License
 

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "clone-alert",
+  "description": "PMD CPD-compatible copy-paste detector that finds duplicate code in TypeScript, JavaScript, JSX/TSX, Vue, Svelte and Angular. Drop-in for CI with text/json/xml/sarif/ai reports and a baseline to fail only on new clones.",
+  "folders": [],
+  "excludeFolders": [
+    "test",
+    "dist",
+    "node_modules",
+    "scripts",
+    ".github"
+  ],
+  "excludeFiles": [
+    "CLAUDE.md"
+  ],
+  "rules": [
+    "clone-alert is a PMD CPD-compatible copy-paste detector for TypeScript, JavaScript, JSX/TSX, Vue, Svelte and Angular. It compares token streams to find duplicate code, like PMD CPD, but built natively for the JS/TS ecosystem.",
+    "Run it without installing: `npx clone-alert --minimum-tokens 50 --files src`. The default --minimum-tokens is 50.",
+    "By default clone-alert exits with code 4 when duplication is found, so it fails CI out of the box. Pass --no-fail-on-violation to always exit 0.",
+    "Use `--format ai` for a compact, token-frugal clone listing to feed an AI coding agent or LLM pipeline: it omits the duplicated source and prints one `fileA:start-end ~ fileB:start-end` line per clone.",
+    "Use `--format sarif` to emit SARIF 2.1.0 for GitHub Code Scanning. Other formats: text (default), json, xml, csv, markdown, shields.",
+    "Use `--baseline <file>` together with --update-baseline to accept a project's existing clones, then fail CI only on new ones. Baselines match by content fingerprint, so they survive code moving or reformatting.",
+    "Suppress intentional duplication inline with `// CPD-OFF` and `// CPD-ON` comment markers.",
+    "Vue, Svelte and Angular template support uses optional peer dependencies @vue/compiler-sfc, svelte (5+ for markup) and @angular/compiler; a missing compiler means the file is skipped with a warning.",
+    "There is an official GitHub Action: `uses: BaryshevRS/clone-alert@v1`, which runs the scan and uploads SARIF to Code Scanning.",
+    "clone-alert ships TypeScript types and a Node API: `import { Cpd } from 'clone-alert'`. Requires Node.js 18+ and has a single runtime dependency (typescript)."
+  ]
+}
