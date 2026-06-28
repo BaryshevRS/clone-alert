@@ -20,7 +20,7 @@ jobs:
       tag_name: ${{ steps.release.outputs.tag_name }}
       major: ${{ steps.release.outputs.major }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -35,7 +35,7 @@ jobs:
       contents: write # move the v<major> tag that the Marketplace Action reads
       id-token: write # OIDC for npm Trusted Publishing + provenance
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       # No registry-url: it makes setup-node write a placeholder authToken into
       # .npmrc, which forces token auth and 404s. Without it npm uses the default
       # registry and the OIDC trusted-publisher flow (needs npm >= 11.5.1 = Node 24).
