@@ -1,0 +1,58 @@
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      major: ${{ steps.release.outputs.major }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # move the v<major> tag that the Marketplace Action reads
+      id-token: write # OIDC for npm Trusted Publishing + provenance
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+      # npm Trusted Publishing needs npm >= 11.5.1; Node 22 ships npm 10.x.
+      - run: npm install -g npm@latest
+      - run: npm ci
+      # prepublishOnly (check + knip + types + self-CPD + tests) and prepack (build)
+      # run as the publish gate — a broken release never reaches npm.
+      # No NODE_AUTH_TOKEN: auth is via OIDC (Trusted Publisher), provenance is automatic.
+      - run: npm publish
+      - name: Move major tag for the Marketplace Action
+        env:
+          MAJOR: ${{ needs.release-please.outputs.major }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "v${MAJOR}"
+          git push -f origin "v${MAJOR}"

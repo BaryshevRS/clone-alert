@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-06-27
+
+First stable release. The public API (the `Cpd` class) and the CLI flags are now
+considered stable and follow Semantic Versioning.
+
+### Added
+
+- Official **GitHub Marketplace Action** (`uses: BaryshevRS/clone-alert@v1`): a
+  composite action that runs the detector, uploads a SARIF report to GitHub Code
+  Scanning (annotations appear inline in the PR diff), and fails the job on
+  duplicates. Inputs for `paths`, `minimum-tokens`, `extensions`, `exclude`, and
+  `fail-on-violation`.
+- CI infrastructure: lint + test workflow, a workflow that publishes the live
+  duplication badge to `main`, and a code-scanning workflow that dogfoods the
+  action on this repo.
+
 ## [0.4.0] - 2026-06-25
 
 ### Added

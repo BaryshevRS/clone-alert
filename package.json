@@ -1,6 +1,6 @@
 {
   "name": "clone-alert",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "PMD CPD-compatible copy-paste detector that finds duplicate code in TypeScript, JavaScript, JSX/TSX, Vue, Svelte and Angular.",
   "license": "MIT",
   "type": "commonjs",
@@ -66,6 +66,7 @@
     "lint:cpd": "npm run build && node dist/cli.js --minimum-tokens 70 --files src --extensions ts --format text --fail-on-violation",
     "lint:knip": "knip",
     "pack:dry-run": "npm pack --dry-run",
+    "prepare": "simple-git-hooks",
     "prepack": "npm run build",
     "prepublishOnly": "npm run check && npm run lint:knip && npm run check-types && npm run lint:cpd && npm test",
     "publish:dry-run": "npm publish --dry-run",
@@ -73,6 +74,9 @@
     "publish:local:dry-run": "npm publish --dry-run --registry http://localhost:4873",
     "test": "npm run build && vitest run",
     "release": "npm publish"
+  },
+  "simple-git-hooks": {
+    "commit-msg": "npx --no -- commitlint --edit \"$1\""
   },
   "dependencies": {
     "typescript": "^6.0.3"
@@ -96,9 +100,12 @@
   "devDependencies": {
     "@angular/compiler": "^22.0.2",
     "@biomejs/biome": "^2.5.0",
+    "@commitlint/cli": "^21.1.0",
+    "@commitlint/config-conventional": "^21.1.0",
     "@types/node": "^24.13.2",
     "@vue/compiler-sfc": "^3.5.38",
     "knip": "^6.5.0",
+    "simple-git-hooks": "^2.13.1",
     "svelte": "^5.56.3",
     "vitest": "^4.1.6"
   },
