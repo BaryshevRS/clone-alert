@@ -1,6 +1,6 @@
 {
   "name": "clone-alert",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "PMD CPD-compatible copy-paste detector that finds duplicate code in TypeScript, JavaScript, JSX/TSX, Vue, Svelte and Angular.",
   "license": "MIT",
   "type": "commonjs",
