@@ -36,13 +36,12 @@ jobs:
       id-token: write # OIDC for npm Trusted Publishing + provenance
     steps:
       - uses: actions/checkout@v6
-      # setup-node v6 is OIDC-aware: with id-token write + a trusted publisher it
-      # skips the placeholder authToken that v4 wrote into .npmrc (which forced
-      # token auth and 404'd). Node 24 ships npm >= 11.5.1, required for OIDC.
+      # No registry-url: it makes setup-node write a placeholder authToken into
+      # .npmrc, which forces token auth and 404s. Without it npm uses the default
+      # registry and the OIDC trusted-publisher flow (needs npm >= 11.5.1 = Node 24).
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          registry-url: 'https://registry.npmjs.org'
       - run: npm ci
       # prepublishOnly (check + knip + types + self-CPD + tests) and prepack (build)
       # run as the publish gate — a broken release never reaches npm.
