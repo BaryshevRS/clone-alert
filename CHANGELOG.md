@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3](https://github.com/BaryshevRS/clone-alert/compare/v1.1.2...v1.1.3) (2026-06-28)
+
+
+### Continuous Integration
+
+* drop registry-url so npm uses OIDC instead of a placeholder token ([5b9f0f1](https://github.com/BaryshevRS/clone-alert/commit/5b9f0f1f85282124323005ded697cfdf76613b4d))
+
 ## [1.1.2](https://github.com/BaryshevRS/clone-alert/compare/v1.1.1...v1.1.2) (2026-06-28)
 
 
