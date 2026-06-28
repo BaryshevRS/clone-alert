@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1](https://github.com/BaryshevRS/clone-alert/compare/v1.1.0...v1.1.1) (2026-06-28)
+
+
+### Continuous Integration
+
+* publish on Node 24 so npm OIDC trusted publishing works ([2ba8709](https://github.com/BaryshevRS/clone-alert/commit/2ba870981fc5d0ff90fe41588a48c159db2d095b))
+
 ## [1.1.0](https://github.com/BaryshevRS/clone-alert/compare/v1.0.1...v1.1.0) (2026-06-28)
 
 
