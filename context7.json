@@ -3,16 +3,8 @@
   "projectTitle": "clone-alert",
   "description": "PMD CPD-compatible copy-paste detector that finds duplicate code in TypeScript, JavaScript, JSX/TSX, Vue, Svelte and Angular. Drop-in for CI with text/json/xml/sarif/ai reports and a baseline to fail only on new clones.",
   "folders": [],
-  "excludeFolders": [
-    "test",
-    "dist",
-    "node_modules",
-    "scripts",
-    ".github"
-  ],
-  "excludeFiles": [
-    "CLAUDE.md"
-  ],
+  "excludeFolders": ["test", "dist", "node_modules", "scripts", ".github"],
+  "excludeFiles": ["CLAUDE.md"],
   "rules": [
     "clone-alert is a PMD CPD-compatible copy-paste detector for TypeScript, JavaScript, JSX/TSX, Vue, Svelte and Angular. It compares token streams to find duplicate code, like PMD CPD, but built natively for the JS/TS ecosystem.",
     "Run it without installing: `npx clone-alert --minimum-tokens 50 --files src`. The default --minimum-tokens is 50.",
