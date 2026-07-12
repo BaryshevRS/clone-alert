@@ -62,9 +62,13 @@ export class Match {
     /**
      * Cache of sorted marks. The `marks` getter is hit millions of times in the
      * hot reportMatch path; without the cache every call did Array.from + sort.
-     * Invalidated only in addMark, i.e. when the mark set actually changes.
+     * addMark appends in place when the new index is above the current maximum
+     * (the common case: within a hash group marks arrive in ascending order);
+     * otherwise it invalidates and the next `marks` call re-sorts.
      */
     private marksSorted: Mark[] | null = null;
+    /** Smallest token index among the marks (PMD's lowest key of the clique). */
+    public lowestMark: number;
 
     constructor(
         public tokenCount: number,
@@ -73,12 +77,22 @@ export class Match {
     ) {
         this.markMap.set(first.token.index, first);
         this.markMap.set(second.token.index, second);
+        this.lowestMark = Math.min(first.token.index, second.token.index);
     }
 
     addMark(entry: TokenEntry) {
         if (!this.markMap.has(entry.index)) {
-            this.markMap.set(entry.index, new Mark(entry));
-            this.marksSorted = null;
+            const mark = new Mark(entry);
+            this.markMap.set(entry.index, mark);
+            if (entry.index < this.lowestMark) this.lowestMark = entry.index;
+            const sorted = this.marksSorted;
+            if (sorted !== null) {
+                if (sorted[sorted.length - 1].token.index < entry.index) {
+                    sorted.push(mark);
+                } else {
+                    this.marksSorted = null;
+                }
+            }
         }
     }
 
@@ -339,14 +353,57 @@ function radixSortByHash(markHashes: Int32Array, count: number): Uint32Array {
     return src;
 }
 
+// Is there a mark with token index in [lo, hi], other than `excl`? `marks` is
+// sorted by ascending index; lower-bound binary search, then at most two probes
+// (only one mark can equal `excl`).
+function hasMarkBetween(marks: Mark[], lo: number, hi: number, excl: number): boolean {
+    let a = 0;
+    let b = marks.length;
+    while (a < b) {
+        const mid = (a + b) >> 1;
+        if (marks[mid].token.index < lo) a = mid + 1;
+        else b = mid;
+    }
+    if (a >= marks.length || marks[a].token.index > hi) return false;
+    if (marks[a].token.index !== excl) return true;
+    return a + 1 < marks.length && marks[a + 1].token.index <= hi;
+}
+
 // Port of MatchCollector.java with no change to the algorithm (it is correct).
 // Marks are represented by the absolute token index (number); positions and ids
 // are read from the SoA columns.
+//
+// One deliberate divergence in DATA STRUCTURE (not in output): PMD's
+// tokenMatchSets stores every reported pair explicitly — for a clone class of m
+// occurrences that is O(m^2) Set entries (each new mark is registered against
+// every existing mark). In normalize mode (--ignore-identifiers /
+// --ignore-literals) classes reach tens of thousands of occurrences and the pair
+// sets alone exhaust the heap. Here the same relation is stored as match
+// MEMBERSHIP: a pair (a, b) is "registered" iff a and b share a Match (including
+// matches later spliced out of the tree — PMD's ghost pairs survive the splice
+// too; the memberships of the removed match keep referencing it, which preserves
+// that), and the lowest key of a mark's partner set is the min over its matches'
+// lowestMark. Both predicates are identical to PMD's pair-set semantics: all
+// pairs within a match are always mutually registered (creation registers the
+// first two marks; every extension registers the newcomer against all existing
+// marks), and no other pairs ever are. Memory per class drops from O(m^2) to
+// O(m) while the reported matches stay byte-identical.
+//
+// The membership store is scoped PER GROUP (per collect() call), keyed by the
+// mark's position inside the group, in flat parallel arrays. That is sound
+// because a mark occurs in exactly one hash group, every report (mark1, mark2)
+// happens inside the group containing both, and a matchTree key can only ever be
+// shared by reports of one group (the key is itself a mark of that group) — so a
+// match never spans groups and memberships never need to outlive collect().
 class MatchCollector {
     private matchTree = new Map<number, Match[]>();
-    private tokenMatchSets = new Map<number, Set<number>>();
     private ids: Int32Array;
     private tokenCount: number;
+    // Per-group membership columns, indexed by group position. firstMatch holds
+    // the (almost always single) match; extraMatches spills the rare positions
+    // that belong to several matches of different lengths.
+    private firstMatch: (Match | null)[] = [];
+    private extraMatches = new Map<number, Match[]>();
 
     constructor(
         private ma: CpdCore,
@@ -357,11 +414,16 @@ class MatchCollector {
     }
 
     public collect(marks: Int32Array) {
+        const k = marks.length;
+        const firstMatch: (Match | null)[] = new Array(k).fill(null);
+        this.firstMatch = firstMatch;
+        this.extraMatches.clear();
+
         let skipped = 0;
-        for (let i = 0; i < marks.length - 1; i += skipped + 1) {
+        for (let i = 0; i < k - 1; i += skipped + 1) {
             skipped = 0;
             const mark1 = marks[i];
-            for (let j = i + 1; j < marks.length; j++) {
+            for (let j = i + 1; j < k; j++) {
                 const mark2 = marks[j];
                 const diff = mark1 - mark2;
 
@@ -372,6 +434,15 @@ class MatchCollector {
                 if (this.hasPreviousDupe(mark1, mark2)) {
                     continue;
                 }
+                // Already-registered pairs would fall out of reportMatch as a
+                // no-op anyway (countDuplicateTokens is deterministic, so the
+                // guards between here and that early return decide the same way
+                // they did on the first report). Checking before the O(len) token
+                // scan turns the re-visits of a large clone class from
+                // O(k^2 * len) into O(k^2) pointer compares.
+                if (this.isPairRegistered(i, j)) {
+                    continue;
+                }
 
                 const dupes = this.countDuplicateTokens(mark1, mark2);
                 if (dupes < this.minTileSize) {
@@ -380,21 +451,24 @@ class MatchCollector {
                 if (diff + dupes >= 1) {
                     continue; // self-overlap
                 }
-                this.reportMatch(mark1, mark2, dupes);
+                this.reportMatch(mark1, mark2, dupes, i, j);
             }
         }
     }
 
-    private reportMatch(mark1: number, mark2: number, dupes: number) {
-        if (this.tokenMatchSets.get(mark1)?.has(mark2)) {
-            return;
-        }
-
+    private reportMatch(mark1: number, mark2: number, dupes: number, pos1: number, pos2: number) {
+        // PMD: lowestKey = min(mark1, partners of mark1). A mark's partners are
+        // exactly the marks of the matches it belongs to, so the min over their
+        // lowestMark is the same value.
         let lowestKey = mark1;
-        const set1 = this.tokenMatchSets.get(mark1);
-        if (set1) {
-            for (const key of set1) {
-                if (key < lowestKey) lowestKey = key;
+        const first = this.firstMatch[pos1];
+        if (first !== null) {
+            if (first.lowestMark < lowestKey) lowestKey = first.lowestMark;
+            const extra = this.extraMatches.get(pos1);
+            if (extra) {
+                for (const m of extra) {
+                    if (m.lowestMark < lowestKey) lowestKey = m.lowestMark;
+                }
             }
         }
 
@@ -404,30 +478,43 @@ class MatchCollector {
             this.matchTree.set(lowestKey, matches);
         }
 
+        // PMD scans every mark of every match here (three positional checks per
+        // mark, first hit decides). The checks are interval tests over the sorted
+        // mark indices and are mutually exclusive by match length, so each match
+        // resolves with one binary search instead of an O(markCount) walk — same
+        // outcome, and in normalize mode this loop went over 10^10 mark visits.
         for (let i = 0; i < matches.length; i++) {
             const m = matches[i];
-            for (const otherMark of m.marks) {
-                const otherEnd = otherMark.token.index;
-                if (otherEnd === mark1) continue;
-
-                if (otherEnd < mark2 && otherEnd + m.tokenCount >= mark2 + dupes) {
-                    return; // nested inside an existing match
-                } else if (mark2 < otherEnd && mark2 + dupes >= otherEnd + m.tokenCount) {
-                    matches.splice(i, 1); // replace it
-                    i--;
-                    break;
-                } else if (dupes === m.tokenCount) {
-                    for (const other of m.marks) {
-                        this.registerTokenMatch(other.token.index, mark2);
-                    }
-                    m.addMark(this.entry(mark2));
+            const len = m.tokenCount;
+            if (len === dupes) {
+                // Nested/replace are unsatisfiable at equal length, so PMD's scan
+                // always takes this branch at its first mark != mark1 (a match
+                // has >= 2 distinct marks, so one exists). PMD registers mark2
+                // against every existing mark here; with the membership encoding,
+                // adding the match to mark2's memberships establishes all those
+                // pairs at once.
+                this.addMembership(pos2, m);
+                m.addMark(this.entry(mark2));
+                return;
+            }
+            if (len > dupes) {
+                // Nested inside an existing match: some mark (other than mark1)
+                // lies in [mark2 + dupes - len, mark2 - 1].
+                if (hasMarkBetween(m.marks, mark2 + dupes - len, mark2 - 1, mark1)) {
                     return;
                 }
+            } else if (hasMarkBetween(m.marks, mark2 + 1, mark2 + dupes - len, -1)) {
+                // The new span covers the existing match: replace it. (mark1 is
+                // never in this interval — it is below mark2.)
+                matches.splice(i, 1);
+                i--;
             }
         }
 
-        matches.push(new Match(dupes, new Mark(this.entry(mark1)), new Mark(this.entry(mark2))));
-        this.registerTokenMatch(mark1, mark2);
+        const match = new Match(dupes, new Mark(this.entry(mark1)), new Mark(this.entry(mark2)));
+        matches.push(match);
+        this.addMembership(pos1, match);
+        this.addMembership(pos2, match);
     }
 
     // Materialize a TokenEntry for a mark. The index is guaranteed in range (marks
@@ -438,19 +525,33 @@ class MatchCollector {
         return entry;
     }
 
-    private registerTokenMatch(mark1: number, mark2: number) {
-        let s1 = this.tokenMatchSets.get(mark1);
-        if (!s1) {
-            s1 = new Set();
-            this.tokenMatchSets.set(mark1, s1);
+    // "Pair is registered" == the marks share a match. Positions almost always
+    // belong to at most one match, so this is one pointer compare in the hot loop.
+    private isPairRegistered(pos1: number, pos2: number): boolean {
+        const f1 = this.firstMatch[pos1];
+        if (f1 === null) return false;
+        const f2 = this.firstMatch[pos2];
+        if (f2 === null) return false;
+        if (f1 === f2) return true;
+        if (this.extraMatches.size === 0) return false;
+        const e1 = this.extraMatches.get(pos1);
+        if (e1 && (e1.includes(f2) || e1.some((m) => this.extraMatches.get(pos2)?.includes(m)))) return true;
+        const e2 = this.extraMatches.get(pos2);
+        return e2 !== undefined && e2.includes(f1);
+    }
+
+    private addMembership(pos: number, match: Match) {
+        const first = this.firstMatch[pos];
+        if (first === null) {
+            this.firstMatch[pos] = match;
+        } else {
+            const extra = this.extraMatches.get(pos);
+            if (extra) {
+                extra.push(match);
+            } else {
+                this.extraMatches.set(pos, [match]);
+            }
         }
-        let s2 = this.tokenMatchSets.get(mark2);
-        if (!s2) {
-            s2 = new Set();
-            this.tokenMatchSets.set(mark2, s2);
-        }
-        s1.add(mark2);
-        s2.add(mark1);
     }
 
     public getMatches(): Match[] {

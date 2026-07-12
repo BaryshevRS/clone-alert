@@ -174,19 +174,27 @@ export class Cpd {
         return total;
     }
 
-    /** Plain text report for eyeballing / diff tests. */
-    public report(matches: Match[] = this.run()): string {
-        const lines: string[] = [];
+    /**
+     * Plain text report, one chunk per duplication — reporters stream the chunks
+     * to stdout so a huge match set never has to fit into a single string.
+     */
+    public *reportChunks(matches: Match[]): Generator<string> {
+        let first = true;
         for (const m of matches) {
-            const marks = m.marks;
+            const lines: string[] = [];
             lines.push(`Found a ${m.tokenCount} token (${m.markCount} occurrences) duplication:`);
-            for (const mk of marks) {
+            for (const mk of m.marks) {
                 const t = mk.token;
                 lines.push(`  ${t.file}:${t.beginLine}:${t.beginColumn}`);
             }
-            lines.push('');
+            yield `${first ? '' : '\n'}${lines.join('\n')}\n`;
+            first = false;
         }
-        return lines.join('\n');
+    }
+
+    /** Plain text report for eyeballing / diff tests. */
+    public report(matches: Match[] = this.run()): string {
+        return Array.from(this.reportChunks(matches)).join('');
     }
 }
 

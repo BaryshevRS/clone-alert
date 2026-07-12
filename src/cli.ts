@@ -190,7 +190,7 @@ function main(argv: string[]): number {
         }
     }
 
-    process.stdout.write(formatReport(options.format, cpd, matches));
+    writeReport(options.format, cpd, matches);
     return options.failOnViolation && matches.length > 0 ? 4 : 0;
 }
 
@@ -216,7 +216,7 @@ function runWithBaseline(options: CliOptions, cpd: Cpd, matches: Match[]): numbe
         console.error(`clone-alert: ${suppressed} known duplication(s) suppressed by baseline`);
     }
 
-    process.stdout.write(formatReport(options.format, cpd, fresh));
+    writeReport(options.format, cpd, fresh);
     return options.failOnViolation && fresh.length > 0 ? 4 : 0;
 }
 
@@ -718,44 +718,80 @@ function replaceExtensions(target: Set<string>, value: string): void {
     }
 }
 
-function formatReport(format: ReportFormat, cpd: Cpd, matches: Match[]): string {
+// Reports are produced as a stream of chunks (roughly one per duplication) and
+// written to stdout incrementally: in normalize mode a report can exceed V8's
+// maximum string length, so it must never be materialized as one string.
+function* reportChunks(format: ReportFormat, cpd: Cpd, matches: Match[]): Generator<string> {
     if (format === 'json') {
-        return `${JSON.stringify({ duplicates: matches.map((match) => matchToJson(match, cpd)) }, null, 2)}\n`;
+        yield* formatJson(matches, cpd);
+    } else if (format === 'xml') {
+        yield* formatXml(matches, cpd);
+    } else if (format === 'sarif') {
+        yield* formatSarif(matches, cpd);
+    } else if (format === 'csv') {
+        yield* formatCsv(matches, cpd);
+    } else if (format === 'csv_with_linecount_per_file') {
+        yield* formatCsvWithLinecountPerFile(matches, cpd);
+    } else if (format === 'markdown') {
+        yield* formatMarkdown(matches, cpd);
+    } else if (format === 'ai') {
+        yield* formatAi(matches, cpd);
+    } else if (format === 'shields') {
+        yield formatShields(matches, cpd);
+    } else {
+        yield* cpd.reportChunks(matches);
+        if (matches.length > 0) {
+            // Footer with the aggregate duplication stats, like jscpd's summary line.
+            yield `${formatStatsLine(computeStats(matches, cpd))}\n`;
+        }
     }
-    if (format === 'xml') {
-        return formatXml(matches, cpd);
+}
+
+function writeReport(format: ReportFormat, cpd: Cpd, matches: Match[]): void {
+    const buffer: string[] = [];
+    let size = 0;
+    for (const chunk of reportChunks(format, cpd, matches)) {
+        buffer.push(chunk);
+        size += chunk.length;
+        if (size >= 1 << 20) {
+            process.stdout.write(buffer.join(''));
+            buffer.length = 0;
+            size = 0;
+        }
     }
-    if (format === 'sarif') {
-        return formatSarif(matches, cpd);
+    if (buffer.length > 0) {
+        process.stdout.write(buffer.join(''));
     }
-    if (format === 'csv') {
-        return formatCsv(matches, cpd);
-    }
-    if (format === 'csv_with_linecount_per_file') {
-        return formatCsvWithLinecountPerFile(matches, cpd);
-    }
-    if (format === 'markdown') {
-        return formatMarkdown(matches, cpd);
-    }
-    if (format === 'ai') {
-        return formatAi(matches, cpd);
-    }
-    if (format === 'shields') {
-        return formatShields(matches, cpd);
-    }
-    const text = cpd.report(matches);
+}
+
+// `JSON.stringify(value, null, 2)` of one report element, re-indented to sit at
+// `indent` inside the streamed enclosing document.
+function stringifyNested(value: unknown, indent: string): string {
+    return JSON.stringify(value, null, 2)
+        .split('\n')
+        .map((line) => indent + line)
+        .join('\n');
+}
+
+function* formatJson(matches: Match[], cpd: Cpd): Generator<string> {
     if (matches.length === 0) {
-        return text;
+        yield '{\n  "duplicates": []\n}\n';
+        return;
     }
-    // Footer with the aggregate duplication stats, like jscpd's summary line.
-    return `${text}${formatStatsLine(computeStats(matches, cpd))}\n`;
+    yield '{\n  "duplicates": [';
+    let first = true;
+    for (const match of matches) {
+        yield `${first ? '' : ','}\n${stringifyNested(matchToJson(match, cpd), '    ')}`;
+        first = false;
+    }
+    yield '\n  ]\n}\n';
 }
 
 // Mirrors PMD's CSVRenderer: a `lines,tokens,occurrences` header, then per
 // duplication `<lines>,<tokens>,<occurrences>` followed by `<startLine>,"<file>"`
 // for each occurrence.
-function formatCsv(matches: Match[], cpd: Cpd): string {
-    const rows = ['lines,tokens,occurrences'];
+function* formatCsv(matches: Match[], cpd: Cpd): Generator<string> {
+    yield 'lines,tokens,occurrences';
     for (const match of matches) {
         const duplicate = matchToJson(match, cpd);
         const cells = [String(duplicate.lines), String(match.tokenCount), String(match.markCount)];
@@ -763,15 +799,15 @@ function formatCsv(matches: Match[], cpd: Cpd): string {
             const location = cpd.locationForMark(mark, match.tokenCount);
             cells.push(String(location.startLine), `"${location.path}"`);
         }
-        rows.push(cells.join(','));
+        yield `\n${cells.join(',')}`;
     }
-    return `${rows.join('\n')}\n`;
+    yield '\n';
 }
 
 // Mirrors PMD's CSVWithLinecountPerFileRenderer: no header; per duplication
 // `<occurrences>,<tokens>` then `<startLine>,<lineCount>,"<file>"` per occurrence.
-function formatCsvWithLinecountPerFile(matches: Match[], cpd: Cpd): string {
-    const rows: string[] = [];
+function* formatCsvWithLinecountPerFile(matches: Match[], cpd: Cpd): Generator<string> {
+    let first = true;
     for (const match of matches) {
         const cells = [String(match.markCount), String(match.tokenCount)];
         for (const mark of match.marks) {
@@ -779,9 +815,10 @@ function formatCsvWithLinecountPerFile(matches: Match[], cpd: Cpd): string {
             const lineCount = location.endLine - location.startLine + 1;
             cells.push(String(location.startLine), String(lineCount), `"${location.path}"`);
         }
-        rows.push(cells.join(','));
+        yield `${first ? '' : '\n'}${cells.join(',')}`;
+        first = false;
     }
-    return `${rows.join('\n')}\n`;
+    yield '\n';
 }
 
 // SARIF 2.1.0 for GitHub Code Scanning (`github/codeql-action/upload-sarif`).
@@ -789,7 +826,7 @@ function formatCsvWithLinecountPerFile(matches: Match[], cpd: Cpd): string {
 // occurrences are relatedLocations. URIs are relative to cwd so GitHub maps them
 // to the checked-out tree. The content fingerprint goes into partialFingerprints,
 // so GitHub tracks an alert across commits even when the clone moves.
-function formatSarif(matches: Match[], cpd: Cpd): string {
+function* formatSarif(matches: Match[], cpd: Cpd): Generator<string> {
     const cwd = process.cwd();
     const physicalLocation = (location: MatchLocation) => ({
         physicalLocation: {
@@ -803,7 +840,7 @@ function formatSarif(matches: Match[], cpd: Cpd): string {
         },
     });
 
-    const results = matches.map((match) => {
+    const resultFor = (match: Match) => {
         const [primary, ...others] = match.marks.map((mark) => cpd.locationForMark(mark, match.tokenCount));
         const elsewhere = others
             .map((location) => `${toPosix(path.relative(cwd, location.path))}:${location.startLine}`)
@@ -821,7 +858,7 @@ function formatSarif(matches: Match[], cpd: Cpd): string {
             relatedLocations: others.map((location, index) => ({ id: index, ...physicalLocation(location) })),
             partialFingerprints: { 'cloneAlert/contentV1': fingerprint(cpd, match) },
         };
-    });
+    };
 
     const log = {
         $schema: 'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json',
@@ -845,11 +882,33 @@ function formatSarif(matches: Match[], cpd: Cpd): string {
                         ],
                     },
                 },
-                results,
+                results: [] as never[],
             },
         ],
     };
-    return `${JSON.stringify(log, null, 2)}\n`;
+
+    // Stream the results array: serialize the log shell with `results: []`,
+    // split it at that marker, and emit one serialized result per match between
+    // the two halves — byte-identical to stringifying the fully populated log.
+    const shell = JSON.stringify(log, null, 2);
+    if (matches.length === 0) {
+        yield `${shell}\n`;
+        return;
+    }
+    const marker = /^([ ]*)"results": \[\]/m.exec(shell);
+    if (!marker || marker.index < 0) {
+        throw new Error('sarif: results marker not found');
+    }
+    const open = shell.indexOf('[]', marker.index) + 1;
+    yield shell.slice(0, open);
+    const indent = `${marker[1]}  `;
+    let first = true;
+    for (const match of matches) {
+        yield `${first ? '' : ','}\n${stringifyNested(resultFor(match), indent)}`;
+        first = false;
+    }
+    yield `\n${marker[1]}]`;
+    yield `${shell.slice(open + 1)}\n`;
 }
 
 function matchToJson(match: Match, cpd: Cpd) {
@@ -863,13 +922,13 @@ function matchToJson(match: Match, cpd: Cpd) {
     };
 }
 
-function formatXml(matches: Match[], cpd: Cpd): string {
-    const lines = ['<?xml version="1.0" encoding="UTF-8"?>', '<pmd-cpd>'];
+function* formatXml(matches: Match[], cpd: Cpd): Generator<string> {
+    yield '<?xml version="1.0" encoding="UTF-8"?>\n<pmd-cpd>';
     for (const match of matches) {
         const duplicate = matchToJson(match, cpd);
-        lines.push(
-            `  <duplication lines="${duplicate.lines}" tokens="${match.tokenCount}" occurrences="${match.markCount}">`
-        );
+        const lines = [
+            `  <duplication lines="${duplicate.lines}" tokens="${match.tokenCount}" occurrences="${match.markCount}">`,
+        ];
         for (const mark of match.marks) {
             const location = cpd.locationForMark(mark, match.tokenCount);
             lines.push(
@@ -880,9 +939,9 @@ function formatXml(matches: Match[], cpd: Cpd): string {
         // slice of the first occurrence, after the <file> elements.
         lines.push(`    <codefragment><![CDATA[${escapeCdata(cpd.codeFragment(match))}]]></codefragment>`);
         lines.push('  </duplication>');
+        yield `\n${lines.join('\n')}`;
     }
-    lines.push('</pmd-cpd>');
-    return `${lines.join('\n')}\n`;
+    yield '\n</pmd-cpd>\n';
 }
 
 function escapeXml(value: string): string {
@@ -897,47 +956,47 @@ function escapeCdata(value: string): string {
 
 // jscpd-style markdown: a title, a one-line summary, then per duplication two
 // occurrence locations and a fenced code block with the duplicated source.
-function formatMarkdown(matches: Match[], cpd: Cpd): string {
-    const out = ['# Copy/paste detection report', ''];
+function* formatMarkdown(matches: Match[], cpd: Cpd): Generator<string> {
     if (matches.length === 0) {
-        out.push('No duplicates found.', '');
-        return `${out.join('\n')}\n`;
+        yield '# Copy/paste detection report\n\nNo duplicates found.\n\n';
+        return;
     }
-    out.push(`> Found ${matches.length} ${matches.length === 1 ? 'clone' : 'clones'}.`, '');
+    yield `# Copy/paste detection report\n\n> Found ${matches.length} ${matches.length === 1 ? 'clone' : 'clones'}.\n`;
     for (const match of matches) {
         const locations = match.marks.map((mark) => cpd.locationForMark(mark, match.tokenCount));
-        out.push(`## Clone (${match.tokenCount} tokens, ${match.markCount} occurrences)`, '');
+        const out = [`## Clone (${match.tokenCount} tokens, ${match.markCount} occurrences)`, ''];
         for (const location of locations) {
             out.push(
                 ` - \`${toPosix(location.path)}\` [${location.startLine}:${location.startColumn} - ${location.endLine}:${location.endColumn}]`
             );
         }
         out.push('', '```', cpd.codeFragment(match), '```', '');
+        yield `\n${out.join('\n')}`;
     }
-    return `${out.join('\n')}\n`;
+    yield '\n';
 }
 
 // Compact, token-frugal listing for LLM/agent pipelines, modelled on jscpd's `ai`
 // reporter: one line per duplication (occurrences joined by ` ~ `), a shared
 // directory prefix stripped to save tokens, then a `---` and the stats summary.
 // No code, no colors.
-function formatAi(matches: Match[], cpd: Cpd): string {
+function* formatAi(matches: Match[], cpd: Cpd): Generator<string> {
     if (matches.length === 0) {
-        return '';
+        return;
     }
     const locationsByMatch = matches.map((match) =>
         match.marks.map((mark) => cpd.locationForMark(mark, match.tokenCount))
     );
     const prefix = commonDirPrefix(locationsByMatch.flat().map((location) => toPosix(location.path)));
-    const lines = locationsByMatch.map((locations) =>
-        locations
+    for (const locations of locationsByMatch) {
+        const line = locations
             .map(
                 (location) => `${toPosix(location.path).slice(prefix.length)}:${location.startLine}-${location.endLine}`
             )
-            .join(' ~ ')
-    );
-    lines.push('---', formatStatsLine(computeStats(matches, cpd)));
-    return `${lines.join('\n')}\n`;
+            .join(' ~ ');
+        yield `${line}\n`;
+    }
+    yield `---\n${formatStatsLine(computeStats(matches, cpd))}\n`;
 }
 
 // A shields.io endpoint payload (https://shields.io/badges/endpoint-badge):
