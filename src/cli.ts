@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { once } from 'node:events';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { type CloneRecord, fingerprint, readBaseline, writeBaseline } from './baseline';
@@ -118,7 +119,7 @@ Examples:
   clone-alert src --baseline .clone-alert-baseline.json --fail-on-violation
 `;
 
-function main(argv: string[]): number {
+async function main(argv: string[]): Promise<number> {
     let options: CliOptions;
     try {
         options = parseArgs(argv, resolveConfig(argv));
@@ -183,21 +184,21 @@ function main(argv: string[]): number {
 
     if (options.baselinePath) {
         try {
-            return runWithBaseline(options, cpd, matches);
+            return await runWithBaseline(options, cpd, matches);
         } catch (error) {
             console.error(`clone-alert: ${(error as Error).message}`);
             return 2;
         }
     }
 
-    writeReport(options.format, cpd, matches);
+    await writeReport(options.format, cpd, matches);
     return options.failOnViolation && matches.length > 0 ? 4 : 0;
 }
 
 // Baseline handling. Detection is already done; this only writes (update) or
 // filters (read) the match set by content fingerprint, so it never touches the
 // hot path — cost is O(matches), not O(tokens).
-function runWithBaseline(options: CliOptions, cpd: Cpd, matches: Match[]): number {
+async function runWithBaseline(options: CliOptions, cpd: Cpd, matches: Match[]): Promise<number> {
     const baselinePath = options.baselinePath as string;
 
     if (options.updateBaseline) {
@@ -216,7 +217,7 @@ function runWithBaseline(options: CliOptions, cpd: Cpd, matches: Match[]): numbe
         console.error(`clone-alert: ${suppressed} known duplication(s) suppressed by baseline`);
     }
 
-    writeReport(options.format, cpd, fresh);
+    await writeReport(options.format, cpd, fresh);
     return options.failOnViolation && fresh.length > 0 ? 4 : 0;
 }
 
@@ -747,21 +748,27 @@ function* reportChunks(format: ReportFormat, cpd: Cpd, matches: Match[]): Genera
     }
 }
 
-function writeReport(format: ReportFormat, cpd: Cpd, matches: Match[]): void {
+async function writeReport(format: ReportFormat, cpd: Cpd, matches: Match[]): Promise<void> {
     const buffer: string[] = [];
     let size = 0;
+    const flush = async () => {
+        if (buffer.length === 0) return;
+        const chunk = buffer.join('');
+        buffer.length = 0;
+        size = 0;
+        if (!process.stdout.write(chunk)) {
+            await once(process.stdout, 'drain');
+        }
+    };
+
     for (const chunk of reportChunks(format, cpd, matches)) {
         buffer.push(chunk);
         size += chunk.length;
         if (size >= 1 << 20) {
-            process.stdout.write(buffer.join(''));
-            buffer.length = 0;
-            size = 0;
+            await flush();
         }
     }
-    if (buffer.length > 0) {
-        process.stdout.write(buffer.join(''));
-    }
+    await flush();
 }
 
 // `JSON.stringify(value, null, 2)` of one report element, re-indented to sit at
@@ -1045,7 +1052,9 @@ function readVersion(): string {
 }
 
 if (require.main === module) {
-    process.exitCode = main(process.argv.slice(2));
+    void main(process.argv.slice(2)).then((exitCode) => {
+        process.exitCode = exitCode;
+    });
 }
 
 export { collectFiles, main, parseArgs };

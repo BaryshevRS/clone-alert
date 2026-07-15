@@ -3,7 +3,8 @@ import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
+import { main } from '../src/cli';
 
 const execFileAsync = promisify(execFile);
 const root = process.cwd();
@@ -53,6 +54,26 @@ function duplicateOne() {
         code: 4,
         stdout: expect.stringMatching(/Found a \d+ token \(2 occurrences\) duplication:/),
     });
+});
+
+test('waits for stdout to drain before completing the report', async () => {
+    const fixture = await makeFixture('stdout-backpressure');
+    await writeFile(path.join(fixture, 'a.ts'), DUP_BLOCK);
+    await writeFile(path.join(fixture, 'b.ts'), DUP_BLOCK.replace('duplicateOne', 'duplicateTwo'));
+
+    const write = vi.spyOn(process.stdout, 'write').mockReturnValue(false);
+    const run = Promise.resolve(main(['--minimum-tokens', '5', '--files', fixture, '--no-fail-on-violation']));
+    let settled = false;
+    void run.then(() => {
+        settled = true;
+    });
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(write).toHaveBeenCalled();
+    expect(settled).toBe(false);
+
+    process.stdout.emit('drain');
+    await expect(run).resolves.toBe(0);
 });
 
 test('uses PMD-like strict comparison by default and enables normalization by flag', async () => {
