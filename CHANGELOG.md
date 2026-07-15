@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.4](https://github.com/BaryshevRS/clone-alert/compare/v1.1.3...v1.1.4) (2026-07-15)
+
+
+### Bug Fixes
+
+* **cli:** respect stdout backpressure ([2f264fd](https://github.com/BaryshevRS/clone-alert/commit/2f264fdddef8bab4353aa8e04df97b39b6d49bc5))
+
+
+### Performance Improvements
+
+* **core:** linear-memory match collection, streamed reports ([63a0594](https://github.com/BaryshevRS/clone-alert/commit/63a05943b988857b7c9e4097567b232e9cb82035))
+
 ## [1.1.3](https://github.com/BaryshevRS/clone-alert/compare/v1.1.2...v1.1.3) (2026-06-28)
 
 
