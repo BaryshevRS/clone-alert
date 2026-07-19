@@ -88,7 +88,7 @@
     "commit-msg": "npx --no -- commitlint --edit \"$1\""
   },
   "dependencies": {
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   },
   "peerDependencies": {
     "@angular/compiler": ">=17.0.0",
