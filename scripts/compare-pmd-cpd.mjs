@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const HELP = `Usage: npm run compare:pmd -- <path> [options]
+const HELP = `Usage: pnpm run compare:pmd -- <path> [options]
 
 Compare PMD CPD and clone-alert on the same source tree.
 

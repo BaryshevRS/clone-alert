@@ -11,7 +11,7 @@ const script = path.join(process.cwd(), 'scripts', 'compare-pmd-cpd.mjs');
 test('prints PMD comparison harness help', async () => {
     const { stdout } = await execFileAsync(process.execPath, [script, '--help']);
 
-    expect(stdout).toContain('Usage: npm run compare:pmd');
+    expect(stdout).toContain('Usage: pnpm run compare:pmd');
     expect(stdout).toContain('--minimum-tokens');
     expect(stdout).toContain('--extensions');
     expect(stdout).toContain('--jscpd');

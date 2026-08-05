@@ -42,11 +42,12 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-      - run: npm ci
-      # prepublishOnly (check + knip + types + self-CPD + tests) and prepack (build)
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      # prepublishOnly (check + StopSlop + types + tests) and prepack (build)
       # run as the publish gate — a broken release never reaches npm.
       # No NODE_AUTH_TOKEN: auth is via OIDC (Trusted Publisher), provenance is automatic.
-      - run: npm publish
+      - run: pnpm publish
       - name: Move major tag for the Marketplace Action
         env:
           MAJOR: ${{ needs.release-please.outputs.major }}

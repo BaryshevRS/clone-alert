@@ -4,6 +4,7 @@
   "description": "PMD CPD-compatible copy-paste detector that finds duplicate code in TypeScript, JavaScript, JSX/TSX, Vue, Svelte and Angular.",
   "license": "MIT",
   "type": "commonjs",
+  "packageManager": "pnpm@10.1.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -69,23 +70,22 @@
     "check": "biome check .",
     "check:fix": "biome check --write .",
     "check-types": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
-    "badge": "npm run build && node dist/cli.js src --minimum-tokens 70 --format shields --no-fail-on-violation > clone-alert-badge.json",
-    "compare:pmd": "npm run build && node scripts/compare-pmd-cpd.mjs",
-    "lint": "npm run check:fix && npm run lint:knip && npm run check-types && npm run lint:cpd",
-    "lint:cpd": "npm run build && node dist/cli.js --minimum-tokens 70 --files src --extensions ts --format text --fail-on-violation",
-    "lint:knip": "knip",
-    "pack:dry-run": "npm pack --dry-run",
+    "badge": "pnpm run build && node dist/cli.js src --minimum-tokens 70 --format shields --no-fail-on-violation > clone-alert-badge.json",
+    "compare:pmd": "pnpm run build && node scripts/compare-pmd-cpd.mjs",
+    "lint": "pnpm run check:fix && pnpm run lint:stopslop && pnpm run check-types",
+    "lint:stopslop": "stopslop . --baseline .stopslop-baseline.json",
+    "pack:dry-run": "pnpm pack --dry-run",
     "prepare": "simple-git-hooks",
-    "prepack": "npm run build",
-    "prepublishOnly": "npm run check && npm run lint:knip && npm run check-types && npm run lint:cpd && npm test",
-    "publish:dry-run": "npm publish --dry-run",
-    "publish:local": "npm publish --registry http://localhost:4873",
-    "publish:local:dry-run": "npm publish --dry-run --registry http://localhost:4873",
-    "test": "npm run build && vitest run",
-    "release": "npm publish"
+    "prepack": "pnpm run build",
+    "prepublishOnly": "pnpm run check && pnpm run lint:stopslop && pnpm run check-types && pnpm test",
+    "publish:dry-run": "pnpm publish --dry-run",
+    "publish:local": "pnpm publish --registry http://localhost:4873",
+    "publish:local:dry-run": "pnpm publish --dry-run --registry http://localhost:4873",
+    "test": "pnpm run build && vitest run",
+    "release": "pnpm publish"
   },
   "simple-git-hooks": {
-    "commit-msg": "npx --no -- commitlint --edit \"$1\""
+    "commit-msg": "pnpm exec commitlint --edit \"$1\""
   },
   "dependencies": {
     "typescript": "^6.0.3"
@@ -113,7 +113,7 @@
     "@commitlint/config-conventional": "^21.1.0",
     "@types/node": "^26.0.1",
     "@vue/compiler-sfc": "^3.5.38",
-    "knip": "^6.5.0",
+    "stopslop": "^1.0.0",
     "simple-git-hooks": "^2.13.1",
     "svelte": "^5.56.3",
     "vitest": "^4.1.6"

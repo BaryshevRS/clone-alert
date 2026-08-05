@@ -1,0 +1,13 @@
+{
+  "$schema": "https://unpkg.com/stopslop/schema.json",
+  "duplicates": {
+    "minTokens": 70
+  },
+  "ignore": ["bench/**", "dist/**", "test/**"],
+  "knip": {
+    "entry": ["test/**/*.ts"],
+    "project": ["src/**/*.ts", "test/**/*.ts"],
+    "ignoreExportsUsedInFile": true,
+    "ignoreDependencies": ["@angular/compiler", "@vue/compiler-sfc", "svelte"]
+  }
+}

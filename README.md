@@ -483,7 +483,7 @@ Because the tokens are identical and the match engine is a faithful port of PMD'
 npm install
 npm run build        # compile to dist/
 npm test             # build + Vitest suite
-npm run lint         # Biome + Knip + type‑check + self‑CPD
+npm run lint         # Biome + StopSlop + type-check
 npm run compare:pmd -- /path/to/project --minimum-tokens 50
 ```
 

@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "findings": [
+    {
+      "kind": "cognitive-complexity",
+      "file": "scripts/compare-pmd-cpd.mjs",
+      "symbol": "parseArgs"
+    },
+    {
+      "kind": "cognitive-complexity",
+      "file": "src/angular.ts",
+      "symbol": "extractAngularInlineTemplates"
+    },
+    {
+      "kind": "cognitive-complexity",
+      "file": "src/angular.ts",
+      "symbol": "tokenizeAngularHtml"
+    },
+    {
+      "kind": "cognitive-complexity",
+      "file": "src/cli.ts",
+      "symbol": "applyConfig"
+    },
+    {
+      "kind": "cognitive-complexity",
+      "file": "src/cli.ts",
+      "symbol": "main"
+    },
+    {
+      "kind": "cognitive-complexity",
+      "file": "src/cli.ts",
+      "symbol": "parseArgs"
+    },
+    {
+      "kind": "cognitive-complexity",
+      "file": "src/core.ts",
+      "symbol": "MatchCollector.collect"
+    },
+    {
+      "kind": "cognitive-complexity",
+      "file": "src/core.ts",
+      "symbol": "MatchCollector.reportMatch"
+    },
+    {
+      "kind": "cognitive-complexity",
+      "file": "src/files.ts",
+      "symbol": "collectFiles"
+    },
+    {
+      "kind": "cognitive-complexity",
+      "file": "src/files.ts",
+      "symbol": "gitignoreToRegExp"
+    },
+    {
+      "kind": "cognitive-complexity",
+      "file": "src/svelte.ts",
+      "symbol": "tokenizeSvelte"
+    },
+    {
+      "kind": "cognitive-complexity",
+      "file": "src/tokenizers.ts",
+      "symbol": "tokenizeTypeScript"
+    },
+    {
+      "kind": "cognitive-complexity",
+      "file": "src/vue.ts",
+      "symbol": "tokenizeVue"
+    },
+    {
+      "kind": "multiple-exported-classes",
+      "file": "src/core.ts",
+      "symbol": "TokenEntry,Mark,Match,CpdCore"
+    }
+  ]
+}
