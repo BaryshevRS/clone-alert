@@ -39,7 +39,7 @@ jobs:
       # No registry-url: it makes setup-node write a placeholder authToken into
       # .npmrc, which forces token auth and 404s. Without it npm uses the default
       # registry and the OIDC trusted-publisher flow (needs npm >= 11.5.1 = Node 24).
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       - run: npm ci
