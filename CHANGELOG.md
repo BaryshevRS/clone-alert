@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.5](https://github.com/BaryshevRS/clone-alert/compare/v1.1.4...v1.1.5) (2026-08-05)
+
+
+### Bug Fixes
+
+* install pnpm before setup-node cache ([268f90f](https://github.com/BaryshevRS/clone-alert/commit/268f90f066490042480ebd4200f4a099844df3e1))
+
 ## [1.1.4](https://github.com/BaryshevRS/clone-alert/compare/v1.1.3...v1.1.4) (2026-07-15)
 
 
