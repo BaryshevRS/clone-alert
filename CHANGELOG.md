@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0](https://github.com/BaryshevRS/clone-alert/compare/v1.1.5...v2.0.0) (2026-11-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* clone-alert now requires Node.js 22.13 or later.
+
+### Features
+
+* upgrade the TypeScript scanner ([2b3f12e](https://github.com/BaryshevRS/clone-alert/commit/2b3f12ebfcbb5ffc9c895fb6dceaf95d0be5e986))
+
 ## [1.1.5](https://github.com/BaryshevRS/clone-alert/compare/v1.1.4...v1.1.5) (2026-08-05)
 
 
