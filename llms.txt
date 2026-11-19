@@ -1,8 +1,8 @@
 # clone-alert
 
-> PMD CPD-compatible copy-paste detector that finds duplicate code in TypeScript, JavaScript, JSX/TSX, Vue, Svelte and Angular. A drop-in PMD CPD alternative for the JS/TS ecosystem with no JVM, running 10–27× faster on real codebases, with text/json/xml/sarif/ai reports and a CI baseline to fail only on new clones.
+> PMD CPD-compatible copy-paste detector that finds duplicate code in TypeScript, JavaScript, JSX/TSX, Vue, Svelte and Angular. A drop-in PMD CPD alternative for the JS/TS ecosystem with no JVM, running 1.5–31.8× faster than the published PMD CPD baseline across five TypeScript codebases, with text/json/xml/sarif/ai reports and a CI baseline to fail only on new clones.
 
-Quick start: `npx clone-alert --minimum-tokens 50 --files src`. Exits with code 4 when duplication is found, so it fails CI by default (pass `--no-fail-on-violation` to always exit 0). Requires Node.js 18+ and has a single runtime dependency (`typescript`). Vue/Svelte/Angular template support uses the optional peer deps `@vue/compiler-sfc`, `svelte` (5+ for markup) and `@angular/compiler`.
+Quick start: `npx clone-alert --minimum-tokens 50 --files src`. Exits with code 4 when duplication is found, so it fails CI by default (pass `--no-fail-on-violation` to always exit 0). Requires Node.js 22.13+ and has a single runtime dependency (`typescript`). Vue/Svelte/Angular template support uses the optional peer deps `@vue/compiler-sfc`, `svelte` (5+ for markup) and `@angular/compiler`.
 
 ## Docs
 

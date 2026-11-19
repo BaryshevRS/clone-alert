@@ -74,7 +74,7 @@
     "compare:pmd": "pnpm run build && node scripts/compare-pmd-cpd.mjs",
     "lint": "pnpm run check:fix && pnpm run lint:stopslop && pnpm run check-types",
     "lint:stopslop": "stopslop . --baseline .stopslop-baseline.json",
-    "pack:dry-run": "pnpm pack --dry-run",
+    "pack:dry-run": "npm pack --dry-run --ignore-scripts",
     "prepare": "simple-git-hooks",
     "prepack": "pnpm run build",
     "prepublishOnly": "pnpm run check && pnpm run lint:stopslop && pnpm run check-types && pnpm test",
@@ -88,7 +88,7 @@
     "commit-msg": "pnpm exec commitlint --edit \"$1\""
   },
   "dependencies": {
-    "typescript": "^6.0.3"
+    "typescript": "7.1.0-beta"
   },
   "peerDependencies": {
     "@angular/compiler": ">=17.0.0",
@@ -113,12 +113,12 @@
     "@commitlint/config-conventional": "^21.1.0",
     "@types/node": "^26.0.1",
     "@vue/compiler-sfc": "^3.5.38",
-    "stopslop": "^1.0.0",
     "simple-git-hooks": "^2.13.1",
+    "stopslop": "^1.0.0",
     "svelte": "^5.56.3",
     "vitest": "^5.0.3"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.13.0"
   }
 }

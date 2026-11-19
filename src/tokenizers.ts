@@ -4,8 +4,10 @@
  *
  * @packageDocumentation
  */
-import * as ts from 'typescript';
+import type * as TsAst from 'typescript/ast' with { 'resolution-mode': 'import' };
 import { type RawToken, TS_ID, TS_LIT } from './core';
+
+const ts: typeof TsAst = require('typescript/ast');
 
 // ESM users: replace require with createRequire(import.meta.url), or make the
 // functions async and use dynamic import.
@@ -100,16 +102,13 @@ export function tokenizeTypeScript(
     filePath: string,
     source: string,
     opts: TokenizeOptions = {},
-    scriptKind: ts.ScriptKind = ts.ScriptKind.TS
+    scriptKind: TsAst.ScriptKind = ts.ScriptKind.TS
 ): RawToken[] {
     const o = { ...DEFAULTS, ...opts };
-    // This used to call ts.createSourceFile (a full AST parse) only to map
-    // positions. The AST is not needed — we use the same line map TS builds under
-    // the hood for getLineAndCharacterOfPosition, without parsing. See createLineMap.
+    // Map offsets without parsing an AST.
     const sf = createLineMap(source);
     const suppressedRanges = findCpdSuppressedRanges(source);
     const scanner = ts.createScanner(
-        ts.ScriptTarget.Latest,
         true,
         scriptKind === ts.ScriptKind.TSX || scriptKind === ts.ScriptKind.JSX
             ? ts.LanguageVariant.JSX
@@ -117,9 +116,9 @@ export function tokenizeTypeScript(
         source
     );
     const out: RawToken[] = [];
-    let previousTokenKind: ts.SyntaxKind | null = null;
+    let previousTokenKind: TsAst.SyntaxKind | null = null;
 
-    const normalize = (kind: ts.SyntaxKind, text: string): string | null => {
+    const normalize = (kind: TsAst.SyntaxKind, text: string): string | null => {
         switch (kind) {
             case ts.SyntaxKind.Identifier:
             case ts.SyntaxKind.PrivateIdentifier:
@@ -153,7 +152,7 @@ export function tokenizeTypeScript(
     // Brace depth inside each active ${…} interpolation. At zero, the next `}`
     // closes the interpolation -> rescan it as TemplateMiddle/Tail.
     const templateBraceDepth: number[] = [];
-    const bumpTemplateDepth = (kind: ts.SyntaxKind) => {
+    const bumpTemplateDepth = (kind: TsAst.SyntaxKind) => {
         if (!splitTemplates) return;
         const top = templateBraceDepth.length - 1;
         switch (kind) {
@@ -176,7 +175,7 @@ export function tokenizeTypeScript(
 
     for (;;) {
         let kind = scanner.scan();
-        if (kind === ts.SyntaxKind.EndOfFileToken) break;
+        if (kind === ts.SyntaxKind.EndOfFile) break;
 
         // Closing `}` of an interpolation: rescan it as a template continuation.
         if (
@@ -188,7 +187,7 @@ export function tokenizeTypeScript(
             kind = scanner.reScanTemplateToken(false);
         }
 
-        const tokenStart = scanner.getTokenPos();
+        const tokenStart = scanner.getTokenStart();
         if (isSuppressed(tokenStart, suppressedRanges)) {
             bumpTemplateDepth(kind); // keep the stack in sync through CPD-OFF
             continue;
@@ -201,7 +200,7 @@ export function tokenizeTypeScript(
         // typescript mode: split part of the template into PMD atoms.
         if (splitTemplates && isTemplatePart(kind)) {
             bumpTemplateDepth(kind);
-            for (const atom of expandTemplateSpan(source, sf, tokenStart, scanner.getTextPos(), o)) {
+            for (const atom of expandTemplateSpan(source, sf, tokenStart, scanner.getTokenEnd(), o)) {
                 out.push(atom);
             }
             previousTokenKind = kind;
@@ -211,7 +210,7 @@ export function tokenizeTypeScript(
         // native mode: the whole template with substitutions is one token.
         if (!splitTemplates && kind === ts.SyntaxKind.TemplateHead) {
             const templateEnd = findTemplateLiteralEnd(source, tokenStart);
-            scanner.setTextPos(templateEnd);
+            scanner.resetTokenState(templateEnd);
             const { line, character } = sf.getLineAndCharacterOfPosition(tokenStart);
             const end = positionAtTokenEnd(sf, templateEnd);
             out.push({
@@ -230,7 +229,7 @@ export function tokenizeTypeScript(
         const image = normalize(kind, normalizeStringContinuation(scanner.getTokenText()));
         if (image === null) continue;
         const { line, character } = sf.getLineAndCharacterOfPosition(tokenStart);
-        const end = positionAtTokenEnd(sf, scanner.getTextPos());
+        const end = positionAtTokenEnd(sf, scanner.getTokenEnd());
         out.push({
             image,
             line: line + 1,
@@ -244,7 +243,7 @@ export function tokenizeTypeScript(
     return out;
 }
 
-function canStartPmdRegexpLiteral(previousKind: ts.SyntaxKind | null): boolean {
+function canStartPmdRegexpLiteral(previousKind: TsAst.SyntaxKind | null): boolean {
     if (previousKind === null) {
         return true;
     }
@@ -275,7 +274,7 @@ function canStartPmdRegexpLiteral(previousKind: ts.SyntaxKind | null): boolean {
 
 // PMD typescript compatibility applies only to TS files; .js/.jsx go through the
 // native scanner with no PMD massaging.
-function isTypeScriptFile(filePath: string, scriptKind: ts.ScriptKind): boolean {
+function isTypeScriptFile(filePath: string, scriptKind: TsAst.ScriptKind): boolean {
     const ext = pathExt(filePath);
     if (ext === '.ts' || ext === '.tsx' || ext === '.mts' || ext === '.cts') return true;
     if (ext === '.js' || ext === '.jsx' || ext === '.mjs' || ext === '.cjs') return false;
@@ -287,31 +286,25 @@ function pathExt(filePath: string): string {
     return dot === -1 ? '' : filePath.slice(dot).toLowerCase();
 }
 
-// offset -> {line, character} mapping, identical to sf.getLineAndCharacterOfPosition
-// but without an AST parse: under the hood TS does computeLineAndCharacterOfPosition(
-// computeLineStarts(text), pos). Those functions are exported at runtime (but not
-// in the public types), so we call them through a narrow cast; on older TS builds
-// that lack them we fall back to a full SourceFile.
+// Offset -> {line, character} mapping without parsing an AST.
 interface LineMap {
     getLineAndCharacterOfPosition(pos: number): { line: number; character: number };
 }
 
 function createLineMap(source: string): LineMap {
-    const api = ts as unknown as {
-        computeLineStarts?: (text: string) => readonly number[];
-        computeLineAndCharacterOfPosition?: (
-            lineStarts: readonly number[],
-            position: number
-        ) => { line: number; character: number };
+    const lineStarts = ts.computeLineStarts(source);
+    return {
+        getLineAndCharacterOfPosition(pos) {
+            let low = 0;
+            let high = lineStarts.length - 1;
+            while (low < high) {
+                const mid = (low + high + 1) >>> 1;
+                if (lineStarts[mid] <= pos) low = mid;
+                else high = mid - 1;
+            }
+            return { line: low, character: pos - lineStarts[low] };
+        },
     };
-    const compute = api.computeLineStarts;
-    const lineAndChar = api.computeLineAndCharacterOfPosition;
-    if (compute && lineAndChar) {
-        const lineStarts = compute(source);
-        return { getLineAndCharacterOfPosition: (pos) => lineAndChar(lineStarts, pos) };
-    }
-    const sf = ts.createSourceFile('_.ts', source, ts.ScriptTarget.Latest, false);
-    return { getLineAndCharacterOfPosition: (pos) => sf.getLineAndCharacterOfPosition(pos) };
 }
 
 function positionAtTokenEnd(sf: LineMap, offset: number): { line: number; column: number } {
@@ -348,7 +341,7 @@ function findTemplateLiteralEnd(source: string, start: number): number {
     return source.length;
 }
 
-function isTemplatePart(kind: ts.SyntaxKind): boolean {
+function isTemplatePart(kind: TsAst.SyntaxKind): boolean {
     return (
         kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral ||
         kind === ts.SyntaxKind.TemplateHead ||
@@ -423,7 +416,7 @@ function findCpdSuppressedRanges(source: string): { start: number; end: number }
 
 const TSX_EXT = new Set(['.tsx', '.jsx']);
 const JS_EXT = new Set(['.js', '.mjs', '.cjs']);
-export function scriptKindFor(ext: string): ts.ScriptKind {
+export function scriptKindFor(ext: string): TsAst.ScriptKind {
     if (TSX_EXT.has(ext)) return ts.ScriptKind.TSX;
     if (JS_EXT.has(ext)) return ts.ScriptKind.JS;
     return ts.ScriptKind.TS;

@@ -1,7 +1,9 @@
-import * as ts from 'typescript';
+import type * as TsAst from 'typescript/ast' with { 'resolution-mode': 'import' };
 import { describe, expect, test } from 'vitest';
 import { Cpd } from '../src/index';
 import { tokenizeTypeScript } from '../src/tokenizers';
+
+const ts: typeof TsAst = require('typescript/ast');
 
 describe('JSX and TSX tokenization', () => {
     test('tokenizes JavaScript natively without PMD typescript massaging', () => {

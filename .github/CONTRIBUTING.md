@@ -7,7 +7,7 @@ not a design choice.
 
 ## Setup
 
-Requires Node.js 18+ (CI runs on 24).
+Requires Node.js 22.13+ (CI runs on 24).
 
 ```sh
 pnpm install       # also installs the commit-msg hook via simple-git-hooks

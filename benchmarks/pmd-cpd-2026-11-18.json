@@ -1,0 +1,159 @@
+{
+  "date": "2026-11-18",
+  "cloneAlert": {
+    "source": "Working tree based on 3092be5",
+    "environment": "Apple M1, macOS 26.5.2 arm64, Node 25.9.0",
+    "warmupRuns": 1,
+    "timedRuns": 3,
+    "summary": "Median wall time and median maximum resident set size from /usr/bin/time -l",
+    "command": "node dist/cli.js --files <corpus> --extensions ts --minimum-tokens 50 --exclude '**/node_modules/**' --exclude '**/dist/**' --exclude '**/.git/**' --format xml --no-gitignore --no-fail-on-violation"
+  },
+  "pmdCpdBaseline": "Published benchmark table in README.md at 3092be5. Figures retain the precision of that table. PMD CPD timings include JVM startup.",
+  "results": [
+    {
+      "repository": "nestjs/nest",
+      "corpus": "bench/repos/nest",
+      "cloneAlert": {
+        "samples": [
+          {
+            "elapsedMs": 474,
+            "maxRssBytes": 182353920
+          },
+          {
+            "elapsedMs": 534,
+            "maxRssBytes": 178470912
+          },
+          {
+            "elapsedMs": 485,
+            "maxRssBytes": 173244416
+          }
+        ],
+        "elapsedMs": 485,
+        "maxRssBytes": 178470912,
+        "sha256": "e5ae4a8079f9aa03ae4ce9d3631db07883bb2499c998e1d14d9290b96a97df99",
+        "clones": 1303
+      },
+      "historicalPmdCpd": {
+        "elapsedMs": 15400,
+        "peakRssMB": 526
+      },
+      "historicalCloneCount": 1303
+    },
+    {
+      "repository": "angular/components",
+      "corpus": "bench/repos/angular-components",
+      "cloneAlert": {
+        "samples": [
+          {
+            "elapsedMs": 2276,
+            "maxRssBytes": 390627328
+          },
+          {
+            "elapsedMs": 1835,
+            "maxRssBytes": 387792896
+          },
+          {
+            "elapsedMs": 1836,
+            "maxRssBytes": 391184384
+          }
+        ],
+        "elapsedMs": 1836,
+        "maxRssBytes": 390627328,
+        "sha256": "0f0bfd45db7aa19a69d72a1f5704c13bd436a063a27a463e7761a3ad42fa3e3d",
+        "clones": 7276
+      },
+      "historicalPmdCpd": {
+        "elapsedMs": 41900,
+        "peakRssMB": 632
+      },
+      "historicalCloneCount": 7276
+    },
+    {
+      "repository": "microsoft/playwright",
+      "corpus": "bench/repos/playwright",
+      "cloneAlert": {
+        "samples": [
+          {
+            "elapsedMs": 3703,
+            "maxRssBytes": 531824640
+          },
+          {
+            "elapsedMs": 3709,
+            "maxRssBytes": 532021248
+          },
+          {
+            "elapsedMs": 3521,
+            "maxRssBytes": 531595264
+          }
+        ],
+        "elapsedMs": 3703,
+        "maxRssBytes": 531824640,
+        "sha256": "f5d04bf96eef7dc6b63d2a99d307ee08718ee6c806540cca2b4f388d3d41c3f1",
+        "clones": 22217
+      },
+      "historicalPmdCpd": {
+        "elapsedMs": 58700,
+        "peakRssMB": 1600
+      },
+      "historicalCloneCount": 22217
+    },
+    {
+      "repository": "vercel/next.js",
+      "corpus": "bench/repos/nextjs",
+      "cloneAlert": {
+        "samples": [
+          {
+            "elapsedMs": 17089,
+            "maxRssBytes": 862208000
+          },
+          {
+            "elapsedMs": 16218,
+            "maxRssBytes": 875282432
+          },
+          {
+            "elapsedMs": 16374,
+            "maxRssBytes": 853000192
+          }
+        ],
+        "elapsedMs": 16374,
+        "maxRssBytes": 862208000,
+        "sha256": "2c4c53bb2309c584d3de14dd830ba6bc39cb99f6cbcbbbfc43743981c94d4f01",
+        "clones": 41397
+      },
+      "historicalPmdCpd": {
+        "elapsedMs": 73600,
+        "peakRssMB": 1700
+      },
+      "historicalCloneCount": 41397
+    },
+    {
+      "repository": "nrwl/nx",
+      "corpus": "bench/repos/nx",
+      "cloneAlert": {
+        "samples": [
+          {
+            "elapsedMs": 57033,
+            "maxRssBytes": 1493827584
+          },
+          {
+            "elapsedMs": 53804,
+            "maxRssBytes": 1451311104
+          },
+          {
+            "elapsedMs": 52339,
+            "maxRssBytes": 1471676416
+          }
+        ],
+        "elapsedMs": 53804,
+        "maxRssBytes": 1471676416,
+        "sha256": "f1414001de5fde12c640bdbbe37e66d5259aaa6fb68df3dd8f4b2f5594d13b90",
+        "clones": 101790
+      },
+      "historicalPmdCpd": {
+        "elapsedMs": 83200,
+        "peakRssMB": 3200
+      },
+      "historicalCloneCount": 101790
+    }
+  ]
+}

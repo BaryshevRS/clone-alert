@@ -6,9 +6,29 @@
  *
  * @packageDocumentation
  */
-import * as ts from 'typescript';
+import type * as TsAst from 'typescript/ast' with { 'resolution-mode': 'import' };
 import { type RawToken, S } from './core';
 import { DEFAULTS, moduleResolveDirs, optional, remap, type TokenizeOptions } from './tokenizers';
+
+const ts: typeof TsAst = require('typescript/ast');
+const { API } = require('typescript/sync') as typeof import('typescript/sync', { with: {
+    'resolution-mode': 'import',
+}});
+
+let inlineTemplateApi: InstanceType<typeof API> | undefined;
+let inlineTemplateApiIdleTimer: NodeJS.Timeout | undefined;
+
+function getInlineTemplateApi(): InstanceType<typeof API> {
+    if (!inlineTemplateApi) inlineTemplateApi = new API();
+    if (inlineTemplateApiIdleTimer) clearTimeout(inlineTemplateApiIdleTimer);
+    inlineTemplateApiIdleTimer = setTimeout(() => {
+        inlineTemplateApi?.close();
+        inlineTemplateApi = undefined;
+        inlineTemplateApiIdleTimer = undefined;
+    }, 1000);
+    inlineTemplateApiIdleTimer.unref();
+    return inlineTemplateApi;
+}
 
 // Token namespace for Angular template expressions. The S prefix guarantees these
 // images never collide with script tokens (no .ts<->template cross-matches).
@@ -233,30 +253,36 @@ export function extractAngularInlineTemplates(
     filePath: string,
     source: string
 ): { code: string; line: number; col: number }[] {
-    const sf = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const api = getInlineTemplateApi();
+    const retained = api.createSourceFile(filePath, source, { scriptKind: ts.ScriptKind.TS });
+    const sf = retained.sourceFile;
     const result: { code: string; line: number; col: number }[] = [];
 
-    const visit = (node: ts.Node) => {
-        if (ts.isDecorator(node) && ts.isCallExpression(node.expression)) {
-            const callee = node.expression.expression;
-            const name = ts.isIdentifier(callee) ? callee.text : '';
-            const arg = node.expression.arguments[0];
-            if (name === 'Component' && arg && ts.isObjectLiteralExpression(arg)) {
-                for (const p of arg.properties) {
-                    if (!ts.isPropertyAssignment(p) || !p.name || !ts.isIdentifier(p.name)) continue;
-                    if (p.name.text !== 'template') continue;
-                    const init = p.initializer;
-                    if (ts.isStringLiteralLike(init)) {
-                        // position of the first content char (after the quote/backtick)
-                        const contentStart = init.getStart(sf) + 1;
-                        const { line, character } = sf.getLineAndCharacterOfPosition(contentStart);
-                        result.push({ code: init.text, line: line + 1, col: character + 1 });
+    try {
+        const visit = (node: TsAst.Node) => {
+            if (ts.isDecorator(node) && ts.isCallExpression(node.expression)) {
+                const callee = node.expression.expression;
+                const name = ts.isIdentifier(callee) ? callee.text : '';
+                const arg = node.expression.arguments[0];
+                if (name === 'Component' && arg && ts.isObjectLiteralExpression(arg)) {
+                    for (const p of arg.properties) {
+                        if (!ts.isPropertyAssignment(p) || !p.name || !ts.isIdentifier(p.name)) continue;
+                        if (p.name.text !== 'template') continue;
+                        const init = p.initializer;
+                        if (ts.isStringLiteralLikeNode(init)) {
+                            // position of the first content char (after the quote/backtick)
+                            const contentStart = init.getStart(sf) + 1;
+                            const { line, character } = sf.getLineAndCharacterOfPosition(contentStart);
+                            result.push({ code: init.text, line: line + 1, col: character + 1 });
+                        }
                     }
                 }
             }
-        }
-        ts.forEachChild(node, visit);
-    };
-    visit(sf);
+            node.forEachChild(visit);
+        };
+        visit(sf);
+    } finally {
+        retained.dispose();
+    }
     return result;
 }

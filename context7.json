@@ -15,6 +15,6 @@
     "Suppress intentional duplication inline with `// CPD-OFF` and `// CPD-ON` comment markers.",
     "Vue, Svelte and Angular template support uses optional peer dependencies @vue/compiler-sfc, svelte (5+ for markup) and @angular/compiler; a missing compiler means the file is skipped with a warning.",
     "There is an official GitHub Action: `uses: BaryshevRS/clone-alert@v1`, which runs the scan and uploads SARIF to Code Scanning.",
-    "clone-alert ships TypeScript types and a Node API: `import { Cpd } from 'clone-alert'`. Requires Node.js 18+ and has a single runtime dependency (typescript)."
+    "clone-alert ships TypeScript types and a Node API: `import { Cpd } from 'clone-alert'`. Requires Node.js 22.13+ and has a single runtime dependency (typescript)."
   ]
 }

@@ -15,9 +15,11 @@
  *
  * @packageDocumentation
  */
-import * as ts from 'typescript';
+import type * as TsAst from 'typescript/ast' with { 'resolution-mode': 'import' };
 import { type RawToken, S } from './core';
 import { DEFAULTS, moduleResolveDirs, optional, remap, type TokenizeOptions, tokenizeTypeScript } from './tokenizers';
+
+const ts: typeof TsAst = require('typescript/ast');
 
 const VUE = `${S}VUE:`; // structural markup marker
 const VUE_TEXT = `${S}VUETEXT`; // non-empty static text
