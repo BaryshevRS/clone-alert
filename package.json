@@ -88,7 +88,7 @@
     "commit-msg": "pnpm exec commitlint --edit \"$1\""
   },
   "dependencies": {
-    "typescript": "7.1.0-beta"
+    "typescript": "7.1.0-dev.20261118.1"
   },
   "peerDependencies": {
     "@angular/compiler": ">=17.0.0",
